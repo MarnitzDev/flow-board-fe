@@ -3,7 +3,9 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { AuthModal } from '@/components/auth/auth-modal';
-import { UserProfile } from '@/components/auth/user-profile';
+import { DashboardCard } from '@/components/dashboard/dashboard-card';
+import { Card } from 'primereact/card';
+import { Button } from 'primereact/button';
 
 export default function Home() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -24,42 +26,42 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
-        <header className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-4">Flow Board</h1>
-          <p className="text-lg text-gray-600">A modern project management application</p>
-        </header>
-
+    <div className="min-h-screen surface-ground">
+      <div className="max-w-6xl mx-auto px-4 py-8">
         {isAuthenticated ? (
           <div className="space-y-6">
-            <UserProfile />
-            <div className="bg-white p-8 rounded-lg shadow">
-              <h2 className="text-2xl font-semibold mb-4">Dashboard</h2>
-              <p className="text-gray-600">Welcome to your Flow Board dashboard! This is where your projects and tasks will be displayed.</p>
-            </div>
+            <Card className="p-6">
+              <h2 className="text-2xl font-semibold mb-4 text-primary">Dashboard</h2>
+              <p className="text-600 mb-4">Welcome to your Flow Board dashboard! This is where your projects and tasks will be displayed.</p>
+            </Card>
+            
+         
           </div>
         ) : (
-          <div className="text-center space-y-6">
-            <div className="bg-white p-8 rounded-lg shadow max-w-md mx-auto">
-              <h2 className="text-2xl font-semibold mb-4">Get Started</h2>
-              <p className="text-gray-600 mb-6">Sign in to access your projects and collaborate with your team.</p>
-              
-              <div className="space-y-3">
-                <button
-                  onClick={() => openAuthModal('login')}
-                  className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg"
-                >
-                  Login
-                </button>
-                <button
-                  onClick={() => openAuthModal('register')}
-                  className="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg"
-                >
-                  Register
-                </button>
+          <div className="text-center space-y-6 mt-16">
+            <Card className="max-w-md mx-auto">
+              <div className="text-center p-6">
+                <i className="pi pi-home text-6xl text-primary mb-4"></i>
+                <h2 className="text-2xl font-semibold mb-4">Welcome to Flow Board</h2>
+                <p className="text-600 mb-6">A modern project management application. Sign in to get started with organizing your projects and collaborating with your team.</p>
+                
+                <div className="flex flex-column gap-3">
+                  <Button
+                    label="Login"
+                    icon="pi pi-sign-in"
+                    className="w-full"
+                    onClick={() => openAuthModal('login')}
+                  />
+                  <Button
+                    label="Register"
+                    icon="pi pi-user-plus"
+                    severity="secondary"
+                    className="w-full"
+                    onClick={() => openAuthModal('register')}
+                  />
+                </div>
               </div>
-            </div>
+            </Card>
           </div>
         )}
 
