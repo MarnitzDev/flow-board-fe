@@ -26,7 +26,7 @@ class SocketService {
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const token = localStorage.getItem('flow-board-token');
+        const token = localStorage.getItem('auth_token'); // Fixed: use the correct token key
         console.log('Connecting to Socket.IO with token:', token ? 'Present' : 'Missing');
         
         this.socket = io('http://localhost:5000', {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Avatar } from 'primereact/avatar';
@@ -45,6 +45,30 @@ export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   
+  // Helper function to match task IDs (handles both _id and id formats)
+  const taskMatches = useCallback((task: Task, targetId: string): boolean => {
+    // CRITICAL: If targetId is undefined/null/empty, don't match anything
+    if (!targetId) {
+      console.warn('⚠️ taskMatches called with invalid targetId:', targetId);
+      return false;
+    }
+    
+    const matches = task.id === targetId || 
+           (task as { _id?: string })._id === targetId;
+    
+    if (matches) {
+      console.log('🎯 Task ID match found:', {
+        taskId: task.id,
+        taskTitle: task.title,
+        targetId: targetId,
+        exactMatch: task.id === targetId,
+        idMatch: (task as { _id?: string })._id === targetId
+      });
+    }
+    
+    return matches;
+  }, []);
+  
   // Drag and drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -66,9 +90,18 @@ export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
     activeUsers,
     typingUsers
   } = useSocket();
+  
+  console.log('🔌 Socket connection status in KanbanBoard:', { isConnected });
+  console.log('🎯 Socket functions available:', { 
+    hasJoinBoard: !!joinBoard, 
+    hasMoveTask: !!moveTask, 
+    hasOnTaskUpdated: !!onTaskUpdated 
+  });
 
   // Fetch tasks when project changes
   useEffect(() => {
+    console.log('🚀 KanbanBoard useEffect triggered. Socket status:', { isConnected, hasProject: !!currentProject, isAuthenticated, hasToken: !!token });
+    
     const fetchData = async () => {
       if (!currentProject || !isAuthenticated || !token) {
         console.log('KanbanBoard: Missing requirements:', { 
@@ -130,11 +163,16 @@ export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
               boardColumns.sort((a, b) => a.order - b.order);
               setColumns(boardColumns);
               setCurrentBoardId(board._id);
-              console.log('Successfully loaded real board columns:', boardColumns.map(c => `${c.name} (${c.taskIds.length} tasks)`));
+              console.log('🏷️ Setting current board ID:', board._id);
+              console.log('✅ Successfully loaded real board columns:', boardColumns.map(c => `${c.name} (${c.taskIds.length} tasks)`));
               
               // Join the board room for real-time updates
               if (isConnected) {
+                console.log('🔗 Joining board room for real-time updates:', board._id);
                 joinBoard(board._id);
+                console.log('✅ Board room join requested');
+              } else {
+                console.log('⚠️ Socket not connected, cannot join board room. Connection status:', isConnected);
               }
               
               // Now fetch tasks for this board using the optimized endpoint
@@ -259,33 +297,192 @@ export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
 
     // Listen for task creation
     const unsubscribeTaskCreated = onTaskCreated((newTask: Task) => {
-      console.log('Real-time: Task created', newTask);
+      console.log('🟢 Real-time: Task created event received', newTask);
       setTasks(prev => [...prev, newTask]);
     });
 
-    // Listen for task updates
+    // Listen for task updates (includes moves)
     const unsubscribeTaskUpdated = onTaskUpdated((updatedTask: Task) => {
-      console.log('Real-time: Task updated', updatedTask);
-      setTasks(prev => prev.map(task => 
-        task.id === updatedTask.id ? updatedTask : task
-      ));
+      console.log('🔄 Real-time: Task updated event received', {
+        taskId: updatedTask.id,
+        taskTitle: (updatedTask as Task & { title?: string }).title,
+        columnId: updatedTask.columnId,
+        fullTask: updatedTask,
+        currentBoardId: currentBoardId,
+        taskBoardId: (updatedTask as Task & { boardId?: string }).boardId
+      });
+      
+      // Check if this update is for the current board
+      const taskBoardId = (updatedTask as Task & { boardId?: string }).boardId;
+      if (taskBoardId && taskBoardId !== currentBoardId) {
+        console.log('⏭️ Skipping task update - different board:', {
+          currentBoardId,
+          taskBoardId,
+          boardIdMatch: taskBoardId === currentBoardId
+        });
+        return;
+      }
+      
+      setTasks(prev => {
+        console.log('📋 Before task update - current tasks:', prev.map(t => ({
+          id: t.id,
+          title: t.title,
+          columnId: t.columnId
+        })));
+        
+        const newTasks = prev.map(task => {
+          // Handle both _id and id formats
+          const isMatch = taskMatches(task, updatedTask.id) || 
+                          taskMatches(task, (updatedTask as { _id?: string })._id || '');
+          
+          if (isMatch) {
+            console.log('✅ Updating task in real-time:', {
+              taskTitle: task.title,
+              oldColumnId: task.columnId,
+              newColumnId: updatedTask.columnId,
+              taskId: task.id,
+              updatedTaskId: updatedTask.id
+            });
+            return { 
+              ...task, 
+              ...updatedTask,
+              id: task.id // Preserve the original ID format
+            };
+          }
+          return task;
+        });
+        
+        console.log('📊 After task update - new tasks:', newTasks.map(t => ({
+          id: t.id,
+          title: t.title,
+          columnId: t.columnId
+        })));
+        
+        return newTasks;
+      });
     });
 
     // Listen for task deletion
     const unsubscribeTaskDeleted = onTaskDeleted((taskId: string) => {
-      console.log('Real-time: Task deleted', taskId);
-      setTasks(prev => prev.filter(task => task.id !== taskId));
+      console.log('🗑️ Real-time: Task deleted event received', taskId);
+      setTasks(prev => prev.filter(task => !taskMatches(task, taskId)));
     });
 
-    // Listen for task movement
+    // Listen for task movement (alternative approach)
     const unsubscribeTaskMoved = onTaskMoved((data) => {
-      console.log('Real-time: Task moved', data);
-      setTasks(prev => prev.map(task => {
-        if (task.id === data.taskId) {
-          return { ...task, columnId: data.toColumnId };
-        }
-        return task;
-      }));
+      console.log('🚀 Real-time: Task moved event received', {
+        data,
+        dataKeys: Object.keys(data),
+        currentBoardId,
+        eventBoardId: data.boardId,
+        boardIdMatch: data.boardId === currentBoardId
+      });
+      
+      // Check if this move is for the current board
+      if (data.boardId !== currentBoardId) {
+        console.log('⏭️ Skipping task move - different board:', {
+          currentBoardId,
+          eventBoardId: data.boardId
+        });
+        return;
+      }
+      
+      // FIXED: Extract taskId from the task object or use data.taskId as fallback
+      interface TaskMoveData {
+        taskId?: string;
+        task?: { id?: string; _id?: string };
+        fromColumnId: string;
+        toColumnId: string;
+        boardId: string;
+      }
+      const moveData = data as TaskMoveData;
+      const taskId = moveData.task?.id || moveData.task?._id || moveData.taskId;
+      
+      if (!taskId) {
+        console.error('❌ Task moved event has no taskId! Skipping to prevent all tasks moving:', data);
+        return;
+      }
+      
+      console.log('✅ Valid task move event - taskId found:', taskId);
+      
+      setTasks(prev => {
+        console.log('📋 Before task move - current tasks:', prev.map(t => ({
+          id: t.id,
+          title: t.title,
+          columnId: t.columnId
+        })));
+        
+        const newTasks = prev.map(task => {
+          const isMatch = taskMatches(task, taskId);
+          if (isMatch) {
+            console.log('✅ Moving task via moveTask event:', {
+              taskTitle: task.title,
+              fromColumn: data.fromColumnId,
+              toColumn: data.toColumnId,
+              taskId: task.id,
+              eventTaskId: taskId
+            });
+            return { ...task, columnId: data.toColumnId };
+          }
+          return task;
+        });
+        
+        console.log('📊 Tasks after move:', newTasks.map(t => ({
+          id: t.id,
+          title: t.title,
+          columnId: t.columnId
+        })));
+        
+        return newTasks;
+      });
+    });
+
+    // Listen for manual sync events (custom solution)
+    let unsubscribeManualSync: (() => void) | null = null;
+    
+    import('@/lib/socket').then(({ socketService }) => {
+      if (socketService.getSocket()) {
+        const handleManualSync = (data: {
+          boardId: string;
+          task: Task;
+          action: string;
+          fromColumn: string;
+          toColumn: string;
+        }) => {
+          console.log('🔄 Manual sync event received:', data);
+          
+          if (data.boardId === currentBoardId && data.task && data.action === 'move') {
+            setTasks(prev => {
+              const newTasks = prev.map(task => {
+                const isMatch = taskMatches(task, data.task.id);
+                if (isMatch) {
+                  console.log('✅ Syncing task manually:', {
+                    taskTitle: task.title,
+                    fromColumn: data.fromColumn,
+                    toColumn: data.toColumn
+                  });
+                  return { ...task, columnId: data.task.columnId };
+                }
+                return task;
+              });
+              
+              console.log('📊 Tasks after manual sync:', newTasks.map(t => ({
+                id: t.id,
+                title: t.title,
+                columnId: t.columnId
+              })));
+              
+              return newTasks;
+            });
+          }
+        };
+        
+        socketService.getSocket()?.on('task:manual-sync', handleManualSync);
+        
+        unsubscribeManualSync = () => {
+          socketService.getSocket()?.off('task:manual-sync', handleManualSync);
+        };
+      }
     });
 
     // Cleanup listeners on unmount or board change
@@ -294,8 +491,9 @@ export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
       unsubscribeTaskUpdated();
       unsubscribeTaskDeleted();
       unsubscribeTaskMoved();
+      unsubscribeManualSync?.();
     };
-  }, [currentBoardId, onTaskCreated, onTaskUpdated, onTaskDeleted, onTaskMoved]);
+  }, [currentBoardId, onTaskCreated, onTaskUpdated, onTaskDeleted, onTaskMoved, taskMatches]);
 
   // Leave board room when component unmounts or project changes
   useEffect(() => {
@@ -343,17 +541,32 @@ export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
     // Update via API
     const updateTask = async () => {
       try {
+        console.log('Moving task:', {
+          taskId,
+          from: oldColumnId,
+          to: newColumnId,
+          boardId: currentBoardId
+        });
+
         // Update columnId in the backend
-        await tasksApi.update(taskId, { columnId: newColumnId });
+        const updatedTask = await tasksApi.update(taskId, { columnId: newColumnId });
+        console.log('Task update API response:', updatedTask);
         
-        // Emit Socket.IO event for real-time updates
+        // Force emit a custom real-time event for immediate sync
         if (currentBoardId) {
           // Get the column tasks for new index calculation
           const columnTasks = tasks.filter(t => t.columnId === newColumnId && t.id !== taskId);
-          
-          // For now, add to end of column
           const newIndex = columnTasks.length;
           
+          console.log('Emitting custom moveTask event:', {
+            taskId,
+            fromColumnId: oldColumnId,
+            toColumnId: newColumnId,
+            newIndex,
+            boardId: currentBoardId
+          });
+          
+          // Emit move event
           moveTask({
             taskId,
             fromColumnId: oldColumnId,
@@ -361,6 +574,27 @@ export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
             newIndex,
             boardId: currentBoardId
           });
+          
+          // ALSO emit a manual task update event for other browsers
+          // This ensures sync even if backend doesn't emit task:updated
+          const fullTask = tasks.find(t => t.id === taskId);
+          if (fullTask) {
+            const updatedFullTask = { ...fullTask, columnId: newColumnId };
+            console.log('Manually emitting task update for sync:', updatedFullTask);
+            
+            // Use the socket service directly to emit a custom sync event
+            import('@/lib/socket').then(({ socketService }) => {
+              if (socketService.getSocket()) {
+                socketService.getSocket()?.emit('task:manual-sync', {
+                  boardId: currentBoardId,
+                  task: updatedFullTask,
+                  action: 'move',
+                  fromColumn: oldColumnId,
+                  toColumn: newColumnId
+                });
+              }
+            });
+          }
         }
       } catch (error) {
         console.error('Failed to move task:', error);
