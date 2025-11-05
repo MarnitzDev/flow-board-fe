@@ -5,11 +5,20 @@ import { Toolbar } from 'primereact/toolbar';
 import { Button } from 'primereact/button';
 import { Avatar } from 'primereact/avatar';
 import { Menu } from 'primereact/menu';
+import { InputText } from 'primereact/inputtext';
 import { useAuth } from '@/context/auth-context';
 import { AuthModal } from '@/components/auth/auth-modal';
+import { useAppNavigation } from '@/lib/navigation';
+import { ViewType } from '@/types/task';
 
-export function Header() {
+interface HeaderProps {
+  onToggleSidebar?: () => void;
+  onCreateTask?: () => void;
+}
+
+export function Header({ onToggleSidebar, onCreateTask }: HeaderProps) {
   const { user, logout, isAuthenticated } = useAuth();
+  const { currentProject, currentView } = useAppNavigation();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const menu = React.useRef<Menu>(null);
@@ -17,6 +26,16 @@ export function Header() {
   const openAuthModal = (mode: 'login' | 'register') => {
     setAuthMode(mode);
     setShowAuthModal(true);
+  };
+
+  const getViewLabel = (view?: ViewType): string => {
+    switch (view) {
+      case 'kanban': return 'Kanban Board';
+      case 'list': return 'List View';
+      case 'calendar': return 'Calendar';
+      case 'gantt': return 'Timeline';
+      default: return '';
+    }
   };
 
   const userMenuItems = [
@@ -50,7 +69,38 @@ export function Header() {
 
   const startContent = (
     <div className="flex items-center gap-2">
+      {onToggleSidebar && (
+        <Button
+          icon="pi pi-bars"
+          severity="secondary"
+          text
+          onClick={onToggleSidebar}
+          className="md:hidden"
+        />
+      )}
       <span className="font-bold text-2xl text-primary">Flow Board</span>
+      {currentProject && (
+        <>
+          <i className="pi pi-chevron-right text-gray-400"></i>
+          <span className="text-lg font-medium text-gray-700">{currentProject.name}</span>
+          {currentView && (
+            <>
+              <i className="pi pi-chevron-right text-gray-400"></i>
+              <span className="text-md text-gray-600">{getViewLabel(currentView)}</span>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  const centerContent = isAuthenticated && (
+    <div className="hidden md:flex items-center gap-2 max-w-md w-full">
+      <span className="pi pi-search text-gray-400"></span>
+      <InputText
+        placeholder="Search tasks, projects..."
+        className="w-full border-none shadow-none"
+      />
     </div>
   );
 
@@ -58,10 +108,26 @@ export function Header() {
     <div className="flex items-center gap-2">
       {isAuthenticated ? (
         <>
-          <span className="text-sm text-600 mr-2">Welcome, {user?.username}</span>
+          {onCreateTask && (
+            <Button
+              icon="pi pi-plus"
+              label="New Task"
+              size="small"
+              onClick={onCreateTask}
+              className="hidden sm:flex"
+            />
+          )}
+          <Button
+            icon="pi pi-bell"
+            severity="secondary"
+            text
+            badge="2"
+            badgeClassName="p-badge-danger"
+          />
+          <span className="text-sm text-gray-600 hidden lg:block">Welcome, {user?.username}</span>
           <Avatar 
             label={user?.username?.charAt(0).toUpperCase()} 
-            className="mr-2 cursor-pointer" 
+            className="cursor-pointer" 
             size="normal" 
             shape="circle"
             style={{ backgroundColor: '#2196F3', color: '#ffffff' }}
@@ -91,9 +157,10 @@ export function Header() {
   return (
     <>
       <Toolbar 
-        start={startContent} 
+        start={startContent}
+        center={centerContent}
         end={endContent}
-        className="border-none border-bottom-1 surface-border"
+        className="border-none border-bottom-1 surface-border px-4"
         style={{ 
           borderRadius: '0',
           background: 'var(--surface-0)',
