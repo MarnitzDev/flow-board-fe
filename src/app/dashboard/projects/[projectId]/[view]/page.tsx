@@ -20,9 +20,11 @@ export default function ProjectViewPage({ params }: ProjectViewPageProps) {
     notFound();
   }
 
-  // Validate project ID (simple check for now)
-  const validProjects = ['1', '2', '3'];
-  if (!validProjects.includes(projectId)) {
+  // Validate project ID - accept MongoDB ObjectIds (24 hex characters) or simple IDs
+  const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(projectId);
+  const isSimpleId = /^[0-9]+$/.test(projectId);
+  
+  if (!isValidObjectId && !isSimpleId) {
     notFound();
   }
 

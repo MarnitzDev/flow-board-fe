@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { AuthContextType, User, LoginCredentials, RegisterCredentials } from '@/types/auth';
 import { authService } from '@/lib/auth-service';
 import { authUtils } from '@/lib/auth-utils';
+import { apiClient } from '@/lib/api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -24,11 +25,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (storedToken && authUtils.isValidToken(storedToken) && storedUser) {
       setToken(storedToken);
       setUser(storedUser);
+      // Initialize the API client token
+      apiClient.setToken(storedToken);
     } else {
       // Clear invalid/expired tokens
       authUtils.clearAuth();
     }
 
+    // Always initialize the API client token from localStorage
+    apiClient.initializeToken();
     setIsLoading(false);
   }, []);
 
@@ -40,9 +45,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setToken(response.token);
       setUser(response.user);
       
-      // Store in localStorage
+      // Store in localStorage and update API client
       authUtils.setToken(response.token);
       authUtils.setUser(response.user);
+      apiClient.setToken(response.token);
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -59,9 +65,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setToken(response.token);
       setUser(response.user);
       
-      // Store in localStorage
+      // Store in localStorage and update API client
       authUtils.setToken(response.token);
       authUtils.setUser(response.user);
+      apiClient.setToken(response.token);
     } catch (error) {
       console.error('Registration error:', error);
       throw error;
@@ -74,6 +81,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setToken(null);
     setUser(null);
     authUtils.clearAuth();
+    apiClient.clearToken();
   };
 
   const isAuthenticated = Boolean(token && user && authUtils.isValidToken(token));

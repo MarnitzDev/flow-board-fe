@@ -1,4 +1,4 @@
-import { AuthResponse, LoginCredentials, RegisterCredentials, User } from '@/types/auth';
+import { AuthResponse, LoginCredentials, RegisterCredentials } from '@/types/auth';
 import { apiClient } from '@/lib/api';
 
 class AuthService {
@@ -30,12 +30,26 @@ class AuthService {
       token: response.token,
       user: response.user,
     } as AuthResponse;
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Registration failed');
+    }
+
+    return response.json();
   }
 
-  async getCurrentUser(): Promise<User> {
-    // Since backend doesn't have a /me endpoint, we'll get user data from login response
-    // This is a placeholder - in a real app you'd have a proper /me endpoint
-    throw new Error('getCurrentUser not implemented - user data comes from login response');
+  // Helper method to make authenticated requests
+  async authenticatedRequest(url: string, options: RequestInit = {}, token: string) {
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
   }
 }
 

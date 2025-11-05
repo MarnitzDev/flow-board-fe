@@ -2,12 +2,16 @@
 
 import { useRouter, useParams, usePathname } from 'next/navigation';
 import { ViewType, Project } from '@/types/task';
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
+import { useAuth } from '@/context/auth-context';
 
 export function useAppNavigation() {
   const router = useRouter();
   const params = useParams();
   const pathname = usePathname();
+  const { isAuthenticated, token } = useAuth();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Extract current state from URL - handle both sync and async params
   const currentProjectId = useMemo(() => {
@@ -25,12 +29,61 @@ export function useAppNavigation() {
     return 'kanban';
   }, [params]);
 
-  // Mock projects - in real app, this would come from API/context
-  const projects: Project[] = [
-    { id: '1', name: 'My Tasks', description: 'Personal workspace', color: '#3B82F6', createdBy: '1', members: [], createdAt: new Date(), updatedAt: new Date() },
-    { id: '2', name: 'Team Project', description: 'Collaborative work', color: '#10B981', createdBy: '1', members: [], createdAt: new Date(), updatedAt: new Date() },
-    { id: '3', name: 'Bug Fixes', description: 'Track and resolve bugs', color: '#EF4444', createdBy: '1', members: [], createdAt: new Date(), updatedAt: new Date() }
-  ];
+  // Fetch projects from API
+  useEffect(() => {
+    const fetchProjects = async () => {
+      if (!isAuthenticated || !token) {
+        console.log('Navigation: Not authenticated, skipping projects fetch');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        console.log('Navigation: Fetching projects...');
+        
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const response = await fetch(`${API_BASE_URL}/api/projects`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Navigation: Projects response:', data);
+          
+          if (data.success && data.data) {
+            // Transform API response to match frontend types
+            const transformedProjects: Project[] = data.data.map((project: any) => ({
+              id: project._id,
+              name: project.name,
+              description: project.description,
+              color: project.color,
+              createdBy: project.createdBy,
+              members: [], // Will be populated with actual user objects when needed
+              createdAt: new Date(project.createdAt),
+              updatedAt: new Date(project.updatedAt)
+            }));
+            
+            setProjects(transformedProjects);
+          }
+        } else {
+          console.error('Navigation: Failed to fetch projects:', response.status);
+          setProjects([]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch projects:', error);
+        // Fallback to empty array or show error state
+        setProjects([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProjects();
+  }, [isAuthenticated, token]);
 
   const currentProject = projects.find(p => p.id === currentProjectId) || projects[0];
 
@@ -43,7 +96,8 @@ export function useAppNavigation() {
       router.push(`/dashboard/projects/${currentProjectId}/${view}`);
     } else {
       // Default to first project if none selected
-      router.push(`/dashboard/projects/${projects[0].id}/${view}`);
+      const defaultProjectId = projects[0]?.id || '1';
+      router.push(`/dashboard/projects/${defaultProjectId}/${view}`);
     }
   };
 
@@ -56,6 +110,7 @@ export function useAppNavigation() {
     currentView,
     currentProjectId,
     projects,
+    isLoading,
     navigateToProject,
     navigateToView,
     navigateToDashboard,
