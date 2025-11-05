@@ -62,6 +62,8 @@ export function Header({ onToggleSidebar, onCreateTask }: HeaderProps) {
       label: 'Logout',
       icon: 'pi pi-sign-out',
       command: () => {
+        // Show immediate feedback
+        console.log('Logging out...');
         logout();
       }
     }

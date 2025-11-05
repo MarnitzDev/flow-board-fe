@@ -78,10 +78,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const logout = (): void => {
+    console.log('Starting logout process...');
+    
+    // Clear state first
     setToken(null);
     setUser(null);
+    
+    // Clear localStorage and API client
     authUtils.clearAuth();
     apiClient.clearToken();
+    
+    console.log('Auth state cleared, redirecting...');
+    
+    // Redirect to home page after logout
+    if (typeof window !== 'undefined') {
+      // Use replace to prevent back button issues
+      window.location.replace('/');
+    }
   };
 
   const isAuthenticated = Boolean(token && user && authUtils.isValidToken(token));

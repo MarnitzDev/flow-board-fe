@@ -5,7 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { MainContent } from '@/components/layout/main-content';
 import { RightPanel } from '@/components/layout/right-panel';
 import { Header } from '@/components/layout/header';
-import { Task, Project, ViewType } from '@/types/task';
+import { Task, Project } from '@/types/task';
 import { useAppNavigation } from '@/lib/navigation';
 
 export function TaskLayout() {

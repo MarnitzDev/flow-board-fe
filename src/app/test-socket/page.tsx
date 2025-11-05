@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSocket } from '@/context/socket-context';
+import { AuthGuard } from '@/components/auth/auth-guard';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { Card } from 'primereact/card';
@@ -46,7 +47,8 @@ export default function SocketTestPage() {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <AuthGuard>
+      <div className="p-6 max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Socket.IO Test Page</h1>
       
       {/* Real Socket.IO Banner */}
@@ -149,6 +151,7 @@ export default function SocketTestPage() {
           />
         )}
       </Card>
-    </div>
+      </div>
+    </AuthGuard>
   );
 }
