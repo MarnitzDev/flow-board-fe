@@ -5,11 +5,10 @@ import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Avatar } from 'primereact/avatar';
 import { Badge } from 'primereact/badge';
-import { TaskFilter, TaskSort, Task, Project, Board, Column, Collection, CreateCollectionForm } from '@/types/task';
+import { TaskFilter, TaskSort, Task, Project, Board, Column } from '@/types/task';
 import { useAuth } from '@/context/auth-context';
 import { useSocket } from '@/context/socket-context';
 import { tasksApi } from '@/lib/api';
-import { CollectionDialog } from '@/components/collections/collection-dialog';
 import {
   DndContext,
   DragEndEvent,
@@ -28,56 +27,19 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-interface KanbanViewProps {
-  filters?: TaskFilter;
-  sorting?: TaskSort;
+interface KanbanBoardProps {
+  filters: TaskFilter;
+  sorting: TaskSort;
   onTaskClick: (task?: Task) => void;
   currentProject?: Project;
   currentBoard?: Board;
 }
 
-export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
+export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [collections, setCollections] = useState<Collection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentBoardId, setCurrentBoardId] = useState<string | null>(null);
-  
-  // Collection management state
-  const [showCollectionDialog, setShowCollectionDialog] = useState(false);
-  const [editingCollection, setEditingCollection] = useState<Collection | undefined>(undefined);
-  
-  // Collection filtering state
-  const [selectedCollectionFilter, setSelectedCollectionFilter] = useState<string | null>(null); // null = all, 'none' = no collection, or collection ID
-  
-  // Additional filtering state
-  const [selectedUserFilter, setSelectedUserFilter] = useState<string | null>(null); // null = all, user ID = specific user, 'unassigned' = no assignee
-  const [selectedLabelFilter, setSelectedLabelFilter] = useState<string | null>(null); // null = all, label ID = specific label
-  const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<string | null>(null); // null = all, 'high'|'medium'|'low' = specific priority
-  
-  // Filter sidebar state
-  const [showFilterSidebar, setShowFilterSidebar] = useState(false);
-  
-  // Click outside to close filter sidebar
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showFilterSidebar) {
-        const sidebar = document.getElementById('filter-sidebar');
-        const filterButton = document.getElementById('filter-button');
-        
-        if (sidebar && filterButton && 
-            !sidebar.contains(event.target as Node) && 
-            !filterButton.contains(event.target as Node)) {
-          setShowFilterSidebar(false);
-        }
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showFilterSidebar]);
   
   // Drag and drop state
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -169,54 +131,14 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
           console.log('Fetching boards for project:', currentProject.id);
           console.log('Using token:', token ? `${token.substring(0, 30)}...` : 'No token');
           
-          // Fetch collections and boards in parallel
-          const [boardsResponse, collectionsResponse] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/boards?projectId=${currentProject.id}`, {
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            }),
-            fetch(`${API_BASE_URL}/api/collections/project/${currentProject.id}`, {
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            })
-          ]);
+          const boardsResponse = await fetch(`${API_BASE_URL}/api/boards?projectId=${currentProject.id}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
           
           console.log('Boards response status:', boardsResponse.status);
-          console.log('Collections response status:', collectionsResponse.status);
-          
-          // Handle collections
-          if (collectionsResponse.ok) {
-            const collectionsData = await collectionsResponse.json();
-            console.log('Collections API response:', collectionsData);
-            
-            if (collectionsData.success && Array.isArray(collectionsData.data)) {
-              // Transform collections to frontend format
-              const transformedCollections: Collection[] = collectionsData.data.map((collection: any) => ({
-                id: collection._id,
-                name: collection.name,
-                description: collection.description,
-                color: collection.color,
-                projectId: collection.projectId,
-                createdBy: collection.createdBy,
-                order: collection.order,
-                isArchived: collection.isArchived,
-                createdAt: new Date(collection.createdAt),
-                updatedAt: new Date(collection.updatedAt)
-              }));
-              
-              setCollections(transformedCollections);
-              console.log('✅ Successfully loaded collections:', transformedCollections.length);
-              console.log('Collections data:', transformedCollections);
-            }
-          } else {
-            console.log('⚠️ Collections response not ok, status:', collectionsResponse.status);
-            console.log('⚠️ Collections API endpoint not implemented yet');
-            setCollections([]);
-          }
           console.log('Boards response ok:', boardsResponse.ok);
           
           if (boardsResponse.ok) {
@@ -294,13 +216,7 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
                       projectId: task.projectId._id || task.projectId,
                       boardId: task.boardId._id || task.boardId,
                       columnId: task.columnId,
-                      collectionId: task.collectionId || undefined, // New field
-                      parentTaskId: task.parentTaskId || undefined, // New field  
-                      isSubtask: task.isSubtask || false, // New field
-                      order: task.order || 0, // New field
-                      createdBy: task.createdBy || task.reporter._id, // New field
                       labels: task.labels || [],
-                      startDate: task.startDate ? new Date(task.startDate) : undefined, // Enhanced field
                       dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
                       createdAt: new Date(task.createdAt),
                       updatedAt: new Date(task.updatedAt),
@@ -579,106 +495,6 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
     };
   }, [currentBoardId, onTaskCreated, onTaskUpdated, onTaskDeleted, onTaskMoved, taskMatches]);
 
-  // Collection management functions
-  const handleCreateCollection = async (collectionData: CreateCollectionForm) => {
-    if (!currentProject || !token) return;
-    
-    try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      
-      if (editingCollection) {
-        // Update existing collection
-        const response = await fetch(`${API_BASE_URL}/api/collections/${editingCollection.id}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(collectionData)
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            // Update in collections state
-            const updatedCollection: Collection = {
-              id: result.data._id,
-              name: result.data.name,
-              description: result.data.description,
-              color: result.data.color,
-              projectId: result.data.projectId,
-              createdBy: result.data.createdBy,
-              order: result.data.order,
-              isArchived: result.data.isArchived,
-              createdAt: new Date(result.data.createdAt),
-              updatedAt: new Date(result.data.updatedAt)
-            };
-            
-            setCollections(prev => prev.map(c => c.id === editingCollection.id ? updatedCollection : c));
-            setShowCollectionDialog(false);
-            setEditingCollection(undefined);
-            
-            console.log('✅ Collection updated successfully:', updatedCollection);
-          }
-        } else {
-          console.error('Failed to update collection:', response.status);
-        }
-      } else {
-        // Create new collection
-        const response = await fetch(`${API_BASE_URL}/api/collections`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            ...collectionData,
-            projectId: currentProject.id
-          })
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            // Transform and add to collections state
-            const newCollection: Collection = {
-              id: result.data._id,
-              name: result.data.name,
-              description: result.data.description,
-              color: result.data.color,
-              projectId: result.data.projectId,
-              createdBy: result.data.createdBy,
-              order: result.data.order,
-              isArchived: result.data.isArchived,
-              createdAt: new Date(result.data.createdAt),
-              updatedAt: new Date(result.data.updatedAt)
-            };
-            
-            setCollections(prev => [...prev, newCollection]);
-            setShowCollectionDialog(false);
-            setEditingCollection(undefined);
-            
-            console.log('✅ Collection created successfully:', newCollection);
-          }
-        } else {
-          console.error('Failed to create collection:', response.status);
-        }
-      }
-    } catch (error) {
-      console.error('Error saving collection:', error);
-    }
-  };
-
-  const handleEditCollection = (collection: Collection) => {
-    setEditingCollection(collection);
-    setShowCollectionDialog(true);
-  };
-
-  const handleNewCollection = () => {
-    setEditingCollection(undefined);
-    setShowCollectionDialog(true);
-  };
-
   // Leave board room when component unmounts or project changes
   useEffect(() => {
     return () => {
@@ -817,18 +633,6 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   const TaskCard = ({ task }: { task: Task }) => {
     const daysUntilDue = getDaysUntilDue(task.dueDate);
     const completedSubtasks = task.subtasks.filter(st => st.completed).length;
-    
-    // Get collection info for this task
-    const taskCollection = task.collectionId 
-      ? collections.find(c => c.id === task.collectionId)
-      : undefined;
-
-    // Debug logging
-    if (task.collectionId) {
-      console.log(`Task "${task.title}" has collectionId:`, task.collectionId);
-      console.log('Available collections:', collections.map(c => ({ id: c.id, name: c.name })));
-      console.log('Found collection:', taskCollection?.name || 'NOT FOUND');
-    }
 
     return (
       <Card 
@@ -836,19 +640,6 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         onClick={() => onTaskClick(task)}
       >
         <div className="space-y-3">
-          {/* Collection indicator */}
-          {taskCollection && (
-            <div className="flex items-center gap-2 mb-2">
-              <div 
-                className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: taskCollection.color }}
-              />
-              <span className="text-xs text-gray-500 font-medium">
-                {taskCollection.name}
-              </span>
-            </div>
-          )}
-          
           {/* Priority indicator and title */}
           <div className="flex items-start gap-2">
             <div 
@@ -861,15 +652,22 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
           {/* Labels */}
           {task.labels.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {task.labels.map((label, index) => (
+              {task.labels.map((label) => (
                 <Badge
-                  key={`${task.id}-label-${label.id || index}`}
+                  key={label.id}
                   value={label.name}
                   style={{ backgroundColor: label.color }}
                   className="text-xs"
                 />
               ))}
             </div>
+          )}
+
+          {/* Description preview */}
+          {task.description && (
+            <p className="text-sm text-gray-600 line-clamp-2">
+              {task.description}
+            </p>
           )}
 
           {/* Footer */}
@@ -973,67 +771,26 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   };
 
   const KanbanColumn = ({ column }: { column: Column }) => {
-    // Filter tasks by columnId and all active filters
-    const columnTasks = tasks.filter(task => {
-      // First filter by column
-      if (task.columnId !== column.id) return false;
-      
-      // Filter by collection selection
-      if (selectedCollectionFilter !== null) {
-        if (selectedCollectionFilter === 'none') {
-          // Show only tasks with no collection
-          if (task.collectionId) return false;
-        } else {
-          // Show only tasks with the selected collection
-          if (task.collectionId !== selectedCollectionFilter) return false;
-        }
-      }
-      
-      // Filter by user/assignee
-      if (selectedUserFilter !== null) {
-        if (selectedUserFilter === 'unassigned') {
-          // Show only unassigned tasks
-          if (task.assignee) return false;
-        } else {
-          // Show only tasks assigned to the selected user
-          if (!task.assignee || task.assignee.id !== selectedUserFilter) return false;
-        }
-      }
-      
-      // Filter by label
-      if (selectedLabelFilter !== null) {
-        // Show only tasks that have the selected label
-        // Check both label.id and label.name since some labels might not have IDs
-        const hasSelectedLabel = task.labels.some(label => {
-          // First try to match by ID
-          if (label.id === selectedLabelFilter) return true;
-          // If no ID match, try to match by name (for labels without IDs)
-          if (!label.id && selectedLabelFilter.includes(label.name)) return true;
-          return false;
-        });
-        if (!hasSelectedLabel) return false;
-      }
-      
-      // Filter by priority
-      if (selectedPriorityFilter !== null) {
-        // Show only tasks with the selected priority
-        if (task.priority !== selectedPriorityFilter) return false;
-      }
-      
-      return true;
-    });
+    // Filter tasks by columnId (Option 1: Dynamic Boards approach)
+    const columnTasks = tasks.filter(task => task.columnId === column.id);
 
     const { isOver, setNodeRef } = useDroppable({
       id: column.id,
     });
 
     return (
-      <div className={`flex-1 min-w-80 bg-gray-50 rounded-lg p-4 transition-all duration-300 flex flex-col h-full ${
+      <div className={`flex-1 min-w-80 bg-gray-50 rounded-lg p-4 transition-all duration-300 ${
         isDragging ? 'shadow-lg ring-2 ring-gray-200' : ''
       } ${isOver ? 'ring-2 ring-blue-400 shadow-xl' : ''}`}>
         {/* Column header */}
-        <div className="flex items-center justify-between mb-4 flex-shrink-0">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
+            <div 
+              className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                isOver ? 'scale-125 shadow-lg' : ''
+              }`}
+              style={{ backgroundColor: column.color }}
+            />
             <h3 className={`font-semibold text-gray-800 transition-all duration-300 ${
               isOver ? 'text-blue-600 scale-105' : ''
             }`}>
@@ -1055,7 +812,7 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         {/* Droppable Tasks Area */}
         <div 
           ref={setNodeRef}
-          className={`space-y-3 rounded-lg p-3 transition-all duration-300 flex-1 overflow-y-auto ${
+          className={`space-y-3 min-h-32 rounded-lg p-3 transition-all duration-300 ${
             isOver 
               ? 'bg-blue-50 border-2 border-blue-400 border-dashed shadow-inner scale-102' 
               : 'bg-transparent border-2 border-transparent'
@@ -1085,55 +842,6 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
     );
   };
 
-  // Get unique values for filter options
-  const uniqueUsers = React.useMemo(() => {
-    const usersSet = new Set();
-    const users: { id: string; username: string; avatar?: string }[] = [];
-    
-    tasks.forEach(task => {
-      if (task.assignee && !usersSet.has(task.assignee.id)) {
-        usersSet.add(task.assignee.id);
-        users.push({
-          id: task.assignee.id,
-          username: task.assignee.username,
-          avatar: task.assignee.avatar
-        });
-      }
-    });
-    
-    return users.sort((a, b) => a.username.localeCompare(b.username));
-  }, [tasks]);
-
-  const uniqueLabels = React.useMemo(() => {
-    const labelsSet = new Set();
-    const labels: { id: string; name: string; color: string }[] = [];
-    
-    tasks.forEach(task => {
-      task.labels.forEach((label, index) => {
-        // Use label.id if available, otherwise use label.name as identifier
-        const labelId = label.id || `${task.id}-${label.name}-${index}`;
-        const labelKey = label.id || label.name; // Use name as unique key if no id
-        
-        if (!labelsSet.has(labelKey) && label.name && label.color) {
-          labelsSet.add(labelKey);
-          labels.push({
-            id: labelId,
-            name: label.name,
-            color: label.color
-          });
-        }
-      });
-    });
-    
-    return labels.sort((a, b) => a.name.localeCompare(b.name));
-  }, [tasks]);
-
-  const priorityOptions = [
-    { label: 'High Priority', value: 'high', color: '#EF4444' },
-    { label: 'Medium Priority', value: 'medium', color: '#F59E0B' },
-    { label: 'Low Priority', value: 'low', color: '#10B981' }
-  ];
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1146,73 +854,21 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   }
 
   return (
-    <div className="h-full flex flex-col relative">
+    <div className="h-full">
       {/* Real-time Status Bar */}
-      <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
+      <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-3">
         <div className="flex items-center gap-4">
-          {/* Filter Button */}
-          <Button
-            id="filter-button"
-            icon="pi pi-filter"
-            label="Filters"
-            size="small"
-            outlined={!showFilterSidebar}
-            severity={showFilterSidebar ? 'info' : undefined}
-            className="text-sm"
-            onClick={() => setShowFilterSidebar(!showFilterSidebar)}
-          />
-          
-          {/* Active Filter Indicators */}
-          {(selectedCollectionFilter || selectedUserFilter || selectedLabelFilter || selectedPriorityFilter) && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">
-                Active filters: {tasks.filter(t => {
-                  // Apply all filters to count
-                  if (selectedCollectionFilter !== null) {
-                    if (selectedCollectionFilter === 'none') {
-                      if (t.collectionId) return false;
-                    } else {
-                      if (t.collectionId !== selectedCollectionFilter) return false;
-                    }
-                  }
-                  if (selectedUserFilter !== null) {
-                    if (selectedUserFilter === 'unassigned') {
-                      if (t.assignee) return false;
-                    } else {
-                      if (!t.assignee || t.assignee.id !== selectedUserFilter) return false;
-                    }
-                  }
-                  if (selectedLabelFilter !== null) {
-                    const hasSelectedLabel = t.labels.some(label => {
-                      if (label.id === selectedLabelFilter) return true;
-                      if (!label.id && selectedLabelFilter.includes(label.name)) return true;
-                      return false;
-                    });
-                    if (!hasSelectedLabel) return false;
-                  }
-                  if (selectedPriorityFilter !== null) {
-                    if (t.priority !== selectedPriorityFilter) return false;
-                  }
-                  return true;
-                }).length} of {tasks.length} tasks
-              </span>
-              
-              {/* Clear All Filters */}
-              <Button
-                icon="pi pi-times"
-                size="small"
-                text
-                className="p-0 w-5 h-5"
-                onClick={() => {
-                  setSelectedCollectionFilter(null);
-                  setSelectedUserFilter(null);
-                  setSelectedLabelFilter(null);
-                  setSelectedPriorityFilter(null);
-                }}
-                tooltip="Clear all filters"
-              />
-            </div>
-          )}
+          {/* Connection Status */}
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span className="text-sm text-gray-600">
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
+            {/* Real Socket.IO Indicator */}
+            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+              LIVE
+            </span>
+          </div>
           
           {/* Active Users */}
           {activeUsers.length > 0 && (
@@ -1240,237 +896,20 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
           )}
         </div>
         
-        {/* Right side actions */}
-        <div className="flex items-center gap-3">
-          {/* New Collection Button */}
-          <Button
-            icon="pi pi-folder-plus"
-            label="New Collection"
-            size="small"
-            outlined
-            className="text-sm"
-            onClick={handleNewCollection}
-          />
-          
-          {/* Typing Indicators */}
-          {typingUsers.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">
-                {typingUsers.map(u => u.username).join(', ')} typing...
-              </span>
-              <div className="flex space-x-1">
-                <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse"></div>
-                <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse delay-75"></div>
-                <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse delay-150"></div>
-              </div>
+        {/* Typing Indicators */}
+        {typingUsers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">
+              {typingUsers.map(u => u.username).join(', ')} typing...
+            </span>
+            <div className="flex space-x-1">
+              <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse"></div>
+              <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse delay-75"></div>
+              <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse delay-150"></div>
             </div>
-          )}
-        </div>
-      </div>
-      
-      {/* Filter Sidebar */}
-      {showFilterSidebar && (
-        <div id="filter-sidebar" className="absolute top-16 right-0 w-80 h-full bg-white border-l border-gray-200 shadow-lg z-50 overflow-y-auto">
-          <div className="p-4">
-            {/* Sidebar Header */}
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                <i className="pi pi-filter text-blue-500"></i>
-                Filters
-              </h3>
-              <Button
-                icon="pi pi-times"
-                className="p-button-text p-button-sm"
-                onClick={() => setShowFilterSidebar(false)}
-              />
-            </div>
-            
-            {/* Collection Filter */}
-            {collections.length > 0 && (
-              <div className="mb-6">
-                <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-                  <i className="pi pi-folder text-gray-500 text-sm"></i>
-                  Collections
-                </h4>
-                <div className="space-y-2">
-                  <div 
-                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                      selectedCollectionFilter === null ? 'bg-blue-50 border border-blue-200' : ''
-                    }`}
-                    onClick={() => setSelectedCollectionFilter(null)}
-                  >
-                    <i className="pi pi-list text-gray-400 text-xs"></i>
-                    <span className="text-sm">All Collections</span>
-                  </div>
-                  <div 
-                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                      selectedCollectionFilter === 'none' ? 'bg-blue-50 border border-blue-200' : ''
-                    }`}
-                    onClick={() => setSelectedCollectionFilter('none')}
-                  >
-                    <i className="pi pi-ban text-gray-400 text-xs"></i>
-                    <span className="text-sm">No Collection</span>
-                  </div>
-                  {collections.map(collection => (
-                    <div 
-                      key={collection.id}
-                      className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                        selectedCollectionFilter === collection.id ? 'bg-blue-50 border border-blue-200' : ''
-                      }`}
-                      onClick={() => setSelectedCollectionFilter(collection.id)}
-                    >
-                      <div 
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: collection.color }}
-                      />
-                      <span className="text-sm">{collection.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {/* User Filter */}
-            {uniqueUsers.length > 0 && (
-              <div className="mb-6">
-                <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-                  <i className="pi pi-user text-gray-500 text-sm"></i>
-                  Assignees
-                </h4>
-                <div className="space-y-2">
-                  <div 
-                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                      selectedUserFilter === null ? 'bg-blue-50 border border-blue-200' : ''
-                    }`}
-                    onClick={() => setSelectedUserFilter(null)}
-                  >
-                    <i className="pi pi-users text-gray-400 text-xs"></i>
-                    <span className="text-sm">All Users</span>
-                  </div>
-                  <div 
-                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                      selectedUserFilter === 'unassigned' ? 'bg-blue-50 border border-blue-200' : ''
-                    }`}
-                    onClick={() => setSelectedUserFilter('unassigned')}
-                  >
-                    <i className="pi pi-user-minus text-gray-400 text-xs"></i>
-                    <span className="text-sm">Unassigned</span>
-                  </div>
-                  {uniqueUsers.map(user => (
-                    <div 
-                      key={user.id}
-                      className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                        selectedUserFilter === user.id ? 'bg-blue-50 border border-blue-200' : ''
-                      }`}
-                      onClick={() => setSelectedUserFilter(user.id)}
-                    >
-                      {user.avatar ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img 
-                          src={user.avatar} 
-                          alt={user.username}
-                          className="w-4 h-4 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center">
-                          <span className="text-xs text-white">{user.username[0].toUpperCase()}</span>
-                        </div>
-                      )}
-                      <span className="text-sm">{user.username}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {/* Label Filter */}
-            <div className="mb-6">
-              <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-                <i className="pi pi-tags text-gray-500 text-sm"></i>
-                Labels
-              </h4>
-              <div className="space-y-2">
-                <div 
-                  className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                    selectedLabelFilter === null ? 'bg-blue-50 border border-blue-200' : ''
-                  }`}
-                  onClick={() => setSelectedLabelFilter(null)}
-                >
-                  <i className="pi pi-tags text-gray-400 text-xs"></i>
-                  <span className="text-sm">All Labels</span>
-                </div>
-                {uniqueLabels.map(label => (
-                  <div 
-                    key={label.id}
-                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                      selectedLabelFilter === label.id ? 'bg-blue-50 border border-blue-200' : ''
-                    }`}
-                    onClick={() => setSelectedLabelFilter(label.id)}
-                  >
-                    <div 
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: label.color }}
-                    />
-                    <span className="text-sm">{label.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            {/* Priority Filter */}
-            <div className="mb-6">
-              <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-                <i className="pi pi-flag text-gray-500 text-sm"></i>
-                Priority
-              </h4>
-              <div className="space-y-2">
-                <div 
-                  className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                    selectedPriorityFilter === null ? 'bg-blue-50 border border-blue-200' : ''
-                  }`}
-                  onClick={() => setSelectedPriorityFilter(null)}
-                >
-                  <i className="pi pi-flag text-gray-400 text-xs"></i>
-                  <span className="text-sm">All Priorities</span>
-                </div>
-                {priorityOptions.map(priority => (
-                  <div 
-                    key={priority.value}
-                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
-                      selectedPriorityFilter === priority.value ? 'bg-blue-50 border border-blue-200' : ''
-                    }`}
-                    onClick={() => setSelectedPriorityFilter(priority.value)}
-                  >
-                    <div 
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: priority.color }}
-                    />
-                    <span className="text-sm">{priority.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            {/* Clear All Filters */}
-            {(selectedCollectionFilter !== null || selectedUserFilter !== null || selectedLabelFilter !== null || selectedPriorityFilter !== null) && (
-              <div className="pt-4 border-t border-gray-200">
-                <Button
-                  icon="pi pi-filter-slash"
-                  label="Clear All Filters"
-                  className="w-full"
-                  outlined
-                  onClick={() => {
-                    setSelectedCollectionFilter(null);
-                    setSelectedUserFilter(null);
-                    setSelectedLabelFilter(null);
-                    setSelectedPriorityFilter(null);
-                  }}
-                />
-              </div>
-            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
       
       <DndContext
         sensors={sensors}
@@ -1478,9 +917,7 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className={`flex gap-6 overflow-x-auto p-6 flex-1 transition-all duration-300 ${
-          showFilterSidebar ? 'pr-86' : ''
-        }`}>
+        <div className="flex gap-6 overflow-x-auto p-6 h-full">
           {columns.map(column => (
             <KanbanColumn key={column.id} column={column} />
           ))}
@@ -1494,17 +931,6 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
           ) : null}
         </DragOverlay>
       </DndContext>
-      
-      {/* Collection Management Dialog */}
-      <CollectionDialog
-        visible={showCollectionDialog}
-        collection={editingCollection}
-        onHide={() => {
-          setShowCollectionDialog(false);
-          setEditingCollection(undefined);
-        }}
-        onSave={handleCreateCollection}
-      />
     </div>
   );
 }
