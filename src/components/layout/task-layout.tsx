@@ -56,7 +56,7 @@ export function TaskLayout() {
       />
 
       {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1">
         {/* Sidebar */}
         <Sidebar
           collapsed={uiState.sidebarCollapsed}

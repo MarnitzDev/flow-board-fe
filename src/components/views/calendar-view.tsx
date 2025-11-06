@@ -445,7 +445,7 @@ export function CalendarView({ onTaskClick, currentProject }: CalendarViewProps)
   }
 
   return (
-    <div className="h-full p-6">
+    <div className="p-6">
       <Toast ref={toast} />
       <ConfirmDialog />
 

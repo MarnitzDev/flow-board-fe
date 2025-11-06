@@ -1126,34 +1126,6 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
             </div>
           )}
           
-          {/* Active Users */}
-          {activeUsers.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Active users:</span>
-              <div className="flex -space-x-2">
-                {activeUsers.slice(0, 5).map((user) => (
-                  <div
-                    key={user.userId}
-                    className="w-6 h-6 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center"
-                    title={user.username}
-                  >
-                    <span className="text-xs text-white font-medium">
-                      {user.username[0].toUpperCase()}
-                    </span>
-                  </div>
-                ))}
-                {activeUsers.length > 5 && (
-                  <div className="w-6 h-6 rounded-full bg-gray-500 border-2 border-white flex items-center justify-center">
-                    <span className="text-xs text-white">+{activeUsers.length - 5}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        
-        {/* Right side actions */}
-        <div className="flex items-center gap-3">
           {/* Filter Status */}
           {selectedCollectionFilter && (
             <div className="flex items-center gap-2">
@@ -1185,13 +1157,34 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
             </div>
           )}
           
-          {/* Collections Count */}
-          {collections.length > 0 && (
-            <span className="text-sm text-gray-600">
-              {collections.length} collection{collections.length !== 1 ? 's' : ''}
-            </span>
+          {/* Active Users */}
+          {activeUsers.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Active users:</span>
+              <div className="flex -space-x-2">
+                {activeUsers.slice(0, 5).map((user) => (
+                  <div
+                    key={user.userId}
+                    className="w-6 h-6 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center"
+                    title={user.username}
+                  >
+                    <span className="text-xs text-white font-medium">
+                      {user.username[0].toUpperCase()}
+                    </span>
+                  </div>
+                ))}
+                {activeUsers.length > 5 && (
+                  <div className="w-6 h-6 rounded-full bg-gray-500 border-2 border-white flex items-center justify-center">
+                    <span className="text-xs text-white">+{activeUsers.length - 5}</span>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
-          
+        </div>
+        
+        {/* Right side actions */}
+        <div className="flex items-center gap-3">
           {/* New Collection Button */}
           <Button
             icon="pi pi-folder-plus"

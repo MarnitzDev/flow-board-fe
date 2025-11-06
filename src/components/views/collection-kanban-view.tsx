@@ -297,7 +297,7 @@ export function CollectionKanbanView({ filters, onTaskClick, currentProject }: C
         className="mb-4 bg-white border border-gray-200 rounded-lg"
       />
 
-      <div className="collections-container space-y-4 h-full overflow-auto">
+      <div className="collections-container space-y-4 overflow-auto">
         {/* Active Collections */}
         {collections
           .filter(c => !c.isArchived)
