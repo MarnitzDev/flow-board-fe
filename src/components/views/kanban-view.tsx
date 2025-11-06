@@ -27,15 +27,15 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-interface KanbanBoardProps {
-  filters: TaskFilter;
-  sorting: TaskSort;
+interface KanbanViewProps {
+  filters?: TaskFilter;
+  sorting?: TaskSort;
   onTaskClick: (task?: Task) => void;
   currentProject?: Project;
   currentBoard?: Board;
 }
 
-export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
+export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);

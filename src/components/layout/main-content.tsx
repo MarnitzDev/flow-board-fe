@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { KanbanBoard } from '@/components/kanban/kanban-board';
+import { KanbanView } from '@/components/views/kanban-view';
 import { ListView } from '@/components/views/list-view';
 import { CalendarView } from '@/components/views/calendar-view';
 import { GanttView } from '@/components/views/gantt-view';
@@ -34,7 +34,7 @@ export function MainContent({
     switch (viewType) {
       case 'kanban':
         return (
-          <KanbanBoard
+          <KanbanView
             filters={filters}
             sorting={sorting}
             onTaskClick={onTaskClick}
