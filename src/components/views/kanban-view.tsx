@@ -652,9 +652,9 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
           {/* Labels */}
           {task.labels.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {task.labels.map((label) => (
+              {task.labels.map((label, index) => (
                 <Badge
-                  key={label.id}
+                  key={`${task.id}-label-${label.id || index}`}
                   value={label.name}
                   style={{ backgroundColor: label.color }}
                   className="text-xs"
