@@ -463,9 +463,9 @@ export function ListView({ onTaskClick, currentProject }: ListViewProps) {
 
   const labelsTemplate = (rowData: Task) => (
     <div className="flex flex-wrap gap-1">
-      {rowData.labels.map((label) => (
+      {rowData.labels.map((label, index) => (
         <Chip
-          key={label.id}
+          key={label.id || `${rowData.id}-label-${index}`}
           label={label.name}
           style={{ backgroundColor: label.color, color: 'white' }}
           className="text-xs"
