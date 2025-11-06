@@ -77,9 +77,33 @@ export function TaskDialog({
   const [newLabelName, setNewLabelName] = useState('');
   const [newLabelColor, setNewLabelColor] = useState('#3B82F6');
   
+  // Dialog maximized state with localStorage persistence
+  const [isMaximized, setIsMaximized] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('taskDialog-maximized') === 'true';
+    }
+    return false;
+  });
+  
   const toast = useRef<Toast>(null);
 
   const isEdit = !!task;
+
+  // Lock/unlock body scroll when modal opens/closes
+  useEffect(() => {
+    if (visible) {
+      // Disable body scroll
+      document.body.style.overflow = 'hidden';
+    } else {
+      // Re-enable body scroll
+      document.body.style.overflow = 'unset';
+    }
+    
+    // Cleanup function to ensure scroll is re-enabled when component unmounts
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [visible]);
 
   // Reset form when dialog opens/closes
   useEffect(() => {
@@ -101,6 +125,13 @@ export function TaskDialog({
       });
     }
   }, [visible, task, projectId, boardId, columnId, columns]);
+
+  // Handle maximize toggle with localStorage persistence
+  const handleMaximizeToggle = () => {
+    const newMaximizedState = !isMaximized;
+    setIsMaximized(newMaximizedState);
+    localStorage.setItem('taskDialog-maximized', newMaximizedState.toString());
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,8 +234,11 @@ export function TaskDialog({
         visible={visible}
         onHide={onHide}
         modal
-        style={{ width: '600px' }}
+        dismissableMask={true}
+        closable={true}
+        style={{ width: isMaximized ? '1200px' : '600px' }}
         maximizable
+        onMaximize={handleMaximizeToggle}
       >
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Title */}
