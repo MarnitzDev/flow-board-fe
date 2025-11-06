@@ -24,7 +24,7 @@ interface MockSocketEvents {
 
 class MockSocketService {
   private eventListeners: Map<string, EventListener[]> = new Map();
-  private isConnected = false;
+  private connected = false;
   private currentBoardId: string | null = null;
   private mockUsers: Array<{ userId: string; username: string }> = [];
   private typingUsers: Array<{ userId: string; username: string; taskId: string }> = [];
@@ -33,7 +33,7 @@ class MockSocketService {
     return new Promise((resolve) => {
       // Simulate connection delay
       setTimeout(() => {
-        this.isConnected = true;
+        this.connected = true;
         console.log('Mock Socket connected');
         this.emit('connect');
         resolve();
@@ -42,7 +42,7 @@ class MockSocketService {
   }
 
   disconnect() {
-    this.isConnected = false;
+    this.connected = false;
     this.currentBoardId = null;
     this.mockUsers = [];
     this.typingUsers = [];
@@ -77,7 +77,7 @@ class MockSocketService {
 
   // Task operations - simulate API calls and emit events
   createTask(taskData: Partial<Task>) {
-    if (!this.isConnected) return;
+    if (!this.connected) return;
     
     console.log('Mock: Creating task:', taskData);
     
@@ -99,7 +99,7 @@ class MockSocketService {
   }
 
   updateTask(taskId: string, updates: Partial<Task>) {
-    if (!this.isConnected) return;
+    if (!this.connected) return;
     
     console.log('Mock: Updating task:', taskId, updates);
     
@@ -121,7 +121,7 @@ class MockSocketService {
   }
 
   deleteTask(taskId: string) {
-    if (!this.isConnected) return;
+    if (!this.connected) return;
     
     console.log('Mock: Deleting task:', taskId);
     
@@ -137,7 +137,7 @@ class MockSocketService {
     newIndex: number;
     boardId: string;
   }) {
-    if (!this.isConnected) return;
+    if (!this.connected) return;
     
     console.log('Mock: Moving task:', data);
     
@@ -148,7 +148,7 @@ class MockSocketService {
 
   // User activity simulation
   startTyping(taskId: string) {
-    if (!this.isConnected) return;
+    if (!this.connected) return;
     
     const typingData = {
       userId: 'current-user',
@@ -182,7 +182,7 @@ class MockSocketService {
   }
 
   stopTyping(taskId: string) {
-    if (!this.isConnected) return;
+    if (!this.connected) return;
     console.log('Mock: Stop typing:', taskId);
   }
 
@@ -221,7 +221,7 @@ class MockSocketService {
 
   // Status methods
   isConnected(): boolean {
-    return this.isConnected;
+    return this.connected;
   }
 
   getCurrentBoardId(): string | null {

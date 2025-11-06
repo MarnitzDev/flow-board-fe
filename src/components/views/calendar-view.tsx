@@ -14,7 +14,7 @@ import { Calendar as PrimeCalendar } from 'primereact/calendar';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { Avatar } from 'primereact/avatar';
 import { Chip } from 'primereact/chip';
-import { Task, Project, User } from '@/types/task';
+import { Task, User } from '@/types/task';
 import { useAuth } from '@/context/auth-context';
 import { useSocket } from '@/context/socket-context';
 import { tasksApi } from '@/lib/api';
@@ -23,8 +23,8 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const localizer = momentLocalizer(moment);
 
 interface CalendarViewProps {
-  onTaskClick: (task?: Task) => void;
-  currentProject?: Project;
+  onTaskClick?: (task: Task) => void;
+  currentProject: any;
 }
 
 interface CalendarEvent {
@@ -492,7 +492,10 @@ export function CalendarView({ onTaskClick, currentProject }: CalendarViewProps)
             <Button
               label="New Task"
               icon="pi pi-plus"
-              onClick={() => onTaskClick()}
+              onClick={() => {
+                // TODO: Implement create new task functionality
+                console.log('Create new task clicked');
+              }}
               className="p-button-primary"
             />
           </div>
@@ -686,7 +689,7 @@ export function CalendarView({ onTaskClick, currentProject }: CalendarViewProps)
                 icon="pi pi-pencil"
                 onClick={() => {
                   setShowEventDialog(false);
-                  onTaskClick(selectedEvent.resource);
+                  onTaskClick?.(selectedEvent.resource);
                 }}
                 className="p-button-primary"
               />

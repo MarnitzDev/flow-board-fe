@@ -48,6 +48,7 @@ export interface Task {
   boardId: string;
   columnId: string;
   labels: Label[];
+  startDate?: Date;
   dueDate?: Date;
   createdAt: Date;
   updatedAt: Date;

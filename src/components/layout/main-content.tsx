@@ -54,7 +54,6 @@ export function MainContent({
       case 'calendar':
         return (
           <CalendarView
-            filters={filters}
             onTaskClick={onTaskClick}
             currentProject={currentProject}
           />

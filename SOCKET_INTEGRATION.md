@@ -1,21 +1,23 @@
 # Socket.IO Integration Guide
 
-## Current Setup (Mock Implementation)
+## Current Setup (Real Implementation)
 
-We've implemented a **mock Socket.IO service** for testing collaborative features without requiring a real Socket.IO server. This allows you to:
+We have implemented a **real Socket.IO service** for collaborative features with a Socket.IO server. This provides:
 
-- Test real-time UI updates
-- See user presence indicators
-- Experience typing notifications
-- Verify task synchronization events
+- Real-time UI updates across all connected users
+- Live user presence indicators
+- Typing notifications and collaboration awareness
+- Task synchronization events with conflict resolution
+- Board-level collaboration rooms
 
-## Mock Features
+## Socket.IO Features
 
-The mock implementation simulates:
+The real implementation provides:
 
 ✅ **Connection Management**
-- Automatic connection/disconnection
+- Automatic connection/disconnection with authentication
 - Connection status indicators
+- Automatic reconnection handling
 
 ✅ **User Presence**
 - Simulated active users joining/leaving
