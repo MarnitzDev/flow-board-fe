@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { socketService } from '@/lib/socket'; // Using real Socket.IO now
-import { Task } from '@/types/task';
+import { Task, Collection } from '@/types/task';
 
 interface SocketContextType {
   isConnected: boolean;
@@ -26,7 +26,21 @@ interface SocketContextType {
     boardId: string;
   }) => void;
   
-  // Event listeners
+  // Collection operations
+  createCollection: (collectionData: Partial<Collection>) => void;
+  updateCollection: (collectionId: string, updates: Partial<Collection>) => void;
+  deleteCollection: (collectionId: string) => void;
+  reorderCollections: (data: {
+    projectId: string;
+    orders: Array<{ id: string; order: number }>;
+  }) => void;
+  
+  // Subtask operations
+  createSubtask: (parentTaskId: string, subtaskData: Partial<Task>) => void;
+  updateSubtask: (subtaskId: string, updates: Partial<Task>) => void;
+  deleteSubtask: (subtaskId: string) => void;
+  
+  // Event listeners - existing
   onTaskCreated: (callback: (task: Task) => void) => () => void;
   onTaskUpdated: (callback: (task: Task) => void) => () => void;
   onTaskDeleted: (callback: (taskId: string) => void) => () => void;
@@ -37,6 +51,20 @@ interface SocketContextType {
     newIndex: number;
     boardId: string;
   }) => void) => () => void;
+  
+  // Event listeners - new for collections
+  onCollectionCreated: (callback: (collection: Collection) => void) => () => void;
+  onCollectionUpdated: (callback: (collection: Collection) => void) => () => void;
+  onCollectionDeleted: (callback: (collectionId: string) => void) => () => void;
+  onCollectionReordered: (callback: (data: {
+    projectId: string;
+    orders: Array<{ id: string; order: number }>;
+  }) => void) => () => void;
+  
+  // Event listeners - new for subtasks
+  onSubtaskCreated: (callback: (subtask: Task) => void) => () => void;
+  onSubtaskUpdated: (callback: (subtask: Task) => void) => () => void;
+  onSubtaskDeleted: (callback: (subtaskId: string) => void) => () => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -149,6 +177,39 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketService.moveTask(data);
   };
 
+  // Collection operations
+  const createCollection = (collectionData: Partial<Collection>) => {
+    socketService.createCollection(collectionData);
+  };
+
+  const updateCollection = (collectionId: string, updates: Partial<Collection>) => {
+    socketService.updateCollection(collectionId, updates);
+  };
+
+  const deleteCollection = (collectionId: string) => {
+    socketService.deleteCollection(collectionId);
+  };
+
+  const reorderCollections = (data: {
+    projectId: string;
+    orders: Array<{ id: string; order: number }>;
+  }) => {
+    socketService.reorderCollections(data);
+  };
+
+  // Subtask operations
+  const createSubtask = (parentTaskId: string, subtaskData: Partial<Task>) => {
+    socketService.createSubtask(parentTaskId, subtaskData);
+  };
+
+  const updateSubtask = (subtaskId: string, updates: Partial<Task>) => {
+    socketService.updateSubtask(subtaskId, updates);
+  };
+
+  const deleteSubtask = (subtaskId: string) => {
+    socketService.deleteSubtask(subtaskId);
+  };
+
   // Event listener helpers that return cleanup functions
   const onTaskCreated = (callback: (task: Task) => void) => {
     const wrappedCallback = (task: unknown) => callback(task as Task);
@@ -186,6 +247,56 @@ export function SocketProvider({ children }: SocketProviderProps) {
     return () => socketService.off('task:moved', wrappedCallback);
   };
 
+  // Collection event listeners
+  const onCollectionCreated = (callback: (collection: Collection) => void) => {
+    const wrappedCallback = (collection: unknown) => callback(collection as Collection);
+    socketService.on('collection:created', wrappedCallback);
+    return () => socketService.off('collection:created', wrappedCallback);
+  };
+
+  const onCollectionUpdated = (callback: (collection: Collection) => void) => {
+    const wrappedCallback = (collection: unknown) => callback(collection as Collection);
+    socketService.on('collection:updated', wrappedCallback);
+    return () => socketService.off('collection:updated', wrappedCallback);
+  };
+
+  const onCollectionDeleted = (callback: (collectionId: string) => void) => {
+    const wrappedCallback = (data: unknown) => callback((data as { collectionId: string }).collectionId);
+    socketService.on('collection:deleted', wrappedCallback);
+    return () => socketService.off('collection:deleted', wrappedCallback);
+  };
+
+  const onCollectionReordered = (callback: (data: {
+    projectId: string;
+    orders: Array<{ id: string; order: number }>;
+  }) => void) => {
+    const wrappedCallback = (data: unknown) => callback(data as {
+      projectId: string;
+      orders: Array<{ id: string; order: number }>;
+    });
+    socketService.on('collection:reordered', wrappedCallback);
+    return () => socketService.off('collection:reordered', wrappedCallback);
+  };
+
+  // Subtask event listeners
+  const onSubtaskCreated = (callback: (subtask: Task) => void) => {
+    const wrappedCallback = (subtask: unknown) => callback(subtask as Task);
+    socketService.on('subtask:created', wrappedCallback);
+    return () => socketService.off('subtask:created', wrappedCallback);
+  };
+
+  const onSubtaskUpdated = (callback: (subtask: Task) => void) => {
+    const wrappedCallback = (subtask: unknown) => callback(subtask as Task);
+    socketService.on('subtask:updated', wrappedCallback);
+    return () => socketService.off('subtask:updated', wrappedCallback);
+  };
+
+  const onSubtaskDeleted = (callback: (subtaskId: string) => void) => {
+    const wrappedCallback = (data: unknown) => callback((data as { subtaskId: string }).subtaskId);
+    socketService.on('subtask:deleted', wrappedCallback);
+    return () => socketService.off('subtask:deleted', wrappedCallback);
+  };
+
   const value: SocketContextType = {
     isConnected,
     activeUsers,
@@ -196,10 +307,24 @@ export function SocketProvider({ children }: SocketProviderProps) {
     updateTask,
     deleteTask,
     moveTask,
+    createCollection,
+    updateCollection,
+    deleteCollection,
+    reorderCollections,
+    createSubtask,
+    updateSubtask,
+    deleteSubtask,
     onTaskCreated,
     onTaskUpdated,
     onTaskDeleted,
     onTaskMoved,
+    onCollectionCreated,
+    onCollectionUpdated,
+    onCollectionDeleted,
+    onCollectionReordered,
+    onSubtaskCreated,
+    onSubtaskUpdated,
+    onSubtaskDeleted,
   };
 
   return (

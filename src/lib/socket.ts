@@ -126,6 +126,46 @@ class SocketService {
     this.socket.emit('task:move', data);
   }
 
+  // Collection operations
+  createCollection(collectionData: unknown) {
+    if (!this.socket) return;
+    this.socket.emit('collection:create', collectionData);
+  }
+
+  updateCollection(collectionId: string, updates: unknown) {
+    if (!this.socket) return;
+    this.socket.emit('collection:update', { collectionId, updates });
+  }
+
+  deleteCollection(collectionId: string) {
+    if (!this.socket) return;
+    this.socket.emit('collection:delete', { collectionId });
+  }
+
+  reorderCollections(data: {
+    projectId: string;
+    orders: Array<{ id: string; order: number }>;
+  }) {
+    if (!this.socket) return;
+    this.socket.emit('collection:reorder', data);
+  }
+
+  // Subtask operations
+  createSubtask(parentTaskId: string, subtaskData: unknown) {
+    if (!this.socket) return;
+    this.socket.emit('subtask:create', { parentTaskId, subtaskData });
+  }
+
+  updateSubtask(subtaskId: string, updates: unknown) {
+    if (!this.socket) return;
+    this.socket.emit('subtask:update', { subtaskId, updates });
+  }
+
+  deleteSubtask(subtaskId: string) {
+    if (!this.socket) return;
+    this.socket.emit('subtask:delete', { subtaskId });
+  }
+
   // Event listeners
   on(event: string, callback: (...args: unknown[]) => void) {
     if (!this.socket) return;

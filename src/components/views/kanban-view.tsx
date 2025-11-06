@@ -5,10 +5,12 @@ import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Avatar } from 'primereact/avatar';
 import { Badge } from 'primereact/badge';
-import { TaskFilter, TaskSort, Task, Project, Board, Column } from '@/types/task';
+import { Dropdown } from 'primereact/dropdown';
+import { TaskFilter, TaskSort, Task, Project, Board, Column, Collection, CreateCollectionForm } from '@/types/task';
 import { useAuth } from '@/context/auth-context';
 import { useSocket } from '@/context/socket-context';
 import { tasksApi } from '@/lib/api';
+import { CollectionDialog } from '@/components/collections/collection-dialog';
 import {
   DndContext,
   DragEndEvent,
@@ -38,8 +40,16 @@ interface KanbanViewProps {
 export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentBoardId, setCurrentBoardId] = useState<string | null>(null);
+  
+  // Collection management state
+  const [showCollectionDialog, setShowCollectionDialog] = useState(false);
+  const [editingCollection, setEditingCollection] = useState<Collection | undefined>(undefined);
+  
+  // Collection filtering state
+  const [selectedCollectionFilter, setSelectedCollectionFilter] = useState<string | null>(null); // null = all, 'none' = no collection, or collection ID
   
   // Drag and drop state
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -131,14 +141,54 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
           console.log('Fetching boards for project:', currentProject.id);
           console.log('Using token:', token ? `${token.substring(0, 30)}...` : 'No token');
           
-          const boardsResponse = await fetch(`${API_BASE_URL}/api/boards?projectId=${currentProject.id}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
+          // Fetch collections and boards in parallel
+          const [boardsResponse, collectionsResponse] = await Promise.all([
+            fetch(`${API_BASE_URL}/api/boards?projectId=${currentProject.id}`, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            }),
+            fetch(`${API_BASE_URL}/api/collections/project/${currentProject.id}`, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            })
+          ]);
           
           console.log('Boards response status:', boardsResponse.status);
+          console.log('Collections response status:', collectionsResponse.status);
+          
+          // Handle collections
+          if (collectionsResponse.ok) {
+            const collectionsData = await collectionsResponse.json();
+            console.log('Collections API response:', collectionsData);
+            
+            if (collectionsData.success && Array.isArray(collectionsData.data)) {
+              // Transform collections to frontend format
+              const transformedCollections: Collection[] = collectionsData.data.map((collection: any) => ({
+                id: collection._id,
+                name: collection.name,
+                description: collection.description,
+                color: collection.color,
+                projectId: collection.projectId,
+                createdBy: collection.createdBy,
+                order: collection.order,
+                isArchived: collection.isArchived,
+                createdAt: new Date(collection.createdAt),
+                updatedAt: new Date(collection.updatedAt)
+              }));
+              
+              setCollections(transformedCollections);
+              console.log('✅ Successfully loaded collections:', transformedCollections.length);
+              console.log('Collections data:', transformedCollections);
+            }
+          } else {
+            console.log('⚠️ Collections response not ok, status:', collectionsResponse.status);
+            console.log('⚠️ Collections API endpoint not implemented yet');
+            setCollections([]);
+          }
           console.log('Boards response ok:', boardsResponse.ok);
           
           if (boardsResponse.ok) {
@@ -216,7 +266,13 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
                       projectId: task.projectId._id || task.projectId,
                       boardId: task.boardId._id || task.boardId,
                       columnId: task.columnId,
+                      collectionId: task.collectionId || undefined, // New field
+                      parentTaskId: task.parentTaskId || undefined, // New field  
+                      isSubtask: task.isSubtask || false, // New field
+                      order: task.order || 0, // New field
+                      createdBy: task.createdBy || task.reporter._id, // New field
                       labels: task.labels || [],
+                      startDate: task.startDate ? new Date(task.startDate) : undefined, // Enhanced field
                       dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
                       createdAt: new Date(task.createdAt),
                       updatedAt: new Date(task.updatedAt),
@@ -495,6 +551,106 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
     };
   }, [currentBoardId, onTaskCreated, onTaskUpdated, onTaskDeleted, onTaskMoved, taskMatches]);
 
+  // Collection management functions
+  const handleCreateCollection = async (collectionData: CreateCollectionForm) => {
+    if (!currentProject || !token) return;
+    
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      
+      if (editingCollection) {
+        // Update existing collection
+        const response = await fetch(`${API_BASE_URL}/api/collections/${editingCollection.id}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(collectionData)
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            // Update in collections state
+            const updatedCollection: Collection = {
+              id: result.data._id,
+              name: result.data.name,
+              description: result.data.description,
+              color: result.data.color,
+              projectId: result.data.projectId,
+              createdBy: result.data.createdBy,
+              order: result.data.order,
+              isArchived: result.data.isArchived,
+              createdAt: new Date(result.data.createdAt),
+              updatedAt: new Date(result.data.updatedAt)
+            };
+            
+            setCollections(prev => prev.map(c => c.id === editingCollection.id ? updatedCollection : c));
+            setShowCollectionDialog(false);
+            setEditingCollection(undefined);
+            
+            console.log('✅ Collection updated successfully:', updatedCollection);
+          }
+        } else {
+          console.error('Failed to update collection:', response.status);
+        }
+      } else {
+        // Create new collection
+        const response = await fetch(`${API_BASE_URL}/api/collections`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            ...collectionData,
+            projectId: currentProject.id
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            // Transform and add to collections state
+            const newCollection: Collection = {
+              id: result.data._id,
+              name: result.data.name,
+              description: result.data.description,
+              color: result.data.color,
+              projectId: result.data.projectId,
+              createdBy: result.data.createdBy,
+              order: result.data.order,
+              isArchived: result.data.isArchived,
+              createdAt: new Date(result.data.createdAt),
+              updatedAt: new Date(result.data.updatedAt)
+            };
+            
+            setCollections(prev => [...prev, newCollection]);
+            setShowCollectionDialog(false);
+            setEditingCollection(undefined);
+            
+            console.log('✅ Collection created successfully:', newCollection);
+          }
+        } else {
+          console.error('Failed to create collection:', response.status);
+        }
+      }
+    } catch (error) {
+      console.error('Error saving collection:', error);
+    }
+  };
+
+  const handleEditCollection = (collection: Collection) => {
+    setEditingCollection(collection);
+    setShowCollectionDialog(true);
+  };
+
+  const handleNewCollection = () => {
+    setEditingCollection(undefined);
+    setShowCollectionDialog(true);
+  };
+
   // Leave board room when component unmounts or project changes
   useEffect(() => {
     return () => {
@@ -633,6 +789,18 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   const TaskCard = ({ task }: { task: Task }) => {
     const daysUntilDue = getDaysUntilDue(task.dueDate);
     const completedSubtasks = task.subtasks.filter(st => st.completed).length;
+    
+    // Get collection info for this task
+    const taskCollection = task.collectionId 
+      ? collections.find(c => c.id === task.collectionId)
+      : undefined;
+
+    // Debug logging
+    if (task.collectionId) {
+      console.log(`Task "${task.title}" has collectionId:`, task.collectionId);
+      console.log('Available collections:', collections.map(c => ({ id: c.id, name: c.name })));
+      console.log('Found collection:', taskCollection?.name || 'NOT FOUND');
+    }
 
     return (
       <Card 
@@ -640,6 +808,19 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         onClick={() => onTaskClick(task)}
       >
         <div className="space-y-3">
+          {/* Collection indicator */}
+          {taskCollection && (
+            <div className="flex items-center gap-2 mb-2">
+              <div 
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ backgroundColor: taskCollection.color }}
+              />
+              <span className="text-xs text-gray-500 font-medium">
+                {taskCollection.name}
+              </span>
+            </div>
+          )}
+          
           {/* Priority indicator and title */}
           <div className="flex items-start gap-2">
             <div 
@@ -771,8 +952,23 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   };
 
   const KanbanColumn = ({ column }: { column: Column }) => {
-    // Filter tasks by columnId (Option 1: Dynamic Boards approach)
-    const columnTasks = tasks.filter(task => task.columnId === column.id);
+    // Filter tasks by columnId and collection filter
+    const columnTasks = tasks.filter(task => {
+      // First filter by column
+      if (task.columnId !== column.id) return false;
+      
+      // Then filter by collection selection
+      if (selectedCollectionFilter === null) {
+        // Show all tasks when no filter is selected
+        return true;
+      } else if (selectedCollectionFilter === 'none') {
+        // Show only tasks with no collection
+        return !task.collectionId;
+      } else {
+        // Show only tasks with the selected collection
+        return task.collectionId === selectedCollectionFilter;
+      }
+    });
 
     const { isOver, setNodeRef } = useDroppable({
       id: column.id,
@@ -858,17 +1054,77 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
       {/* Real-time Status Bar */}
       <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-3">
         <div className="flex items-center gap-4">
-          {/* Connection Status */}
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <span className="text-sm text-gray-600">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
-            {/* Real Socket.IO Indicator */}
-            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-              LIVE
-            </span>
-          </div>
+          {/* Collection Filter */}
+          {collections.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Filter:</span>
+              <Dropdown
+                value={selectedCollectionFilter === null ? 'all' : selectedCollectionFilter} // Convert null to 'all' for display
+                options={[
+                  { label: 'All Tasks', value: 'all' }, // Changed from null to 'all'
+                  { label: 'No Collection', value: 'none' },
+                  ...collections.map(collection => ({
+                    label: collection.name,
+                    value: collection.id,
+                    color: collection.color
+                  }))
+                ]}
+                onChange={(e) => setSelectedCollectionFilter(e.value === 'all' ? null : e.value)} // Convert 'all' back to null
+                placeholder="Filter by collection"
+                className="w-48"
+                itemTemplate={(option) => (
+                  <div className="flex items-center gap-2">
+                    {option.color && (
+                      <div 
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: option.color }}
+                      />
+                    )}
+                    {option.value === 'none' && (
+                      <i className="pi pi-ban text-gray-400 text-xs"></i>
+                    )}
+                    {option.value === 'all' && (
+                      <i className="pi pi-list text-gray-400 text-xs"></i>
+                    )}
+                    <span>{option.label}</span>
+                  </div>
+                )}
+                valueTemplate={(option) => {
+                  if (!option || option.value === 'all') {
+                    return (
+                      <div className="flex items-center gap-2">
+                        <i className="pi pi-list text-gray-400 text-xs"></i>
+                        <span className="text-sm">All Tasks</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="flex items-center gap-2">
+                      {option.color && (
+                        <div 
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: option.color }}
+                        />
+                      )}
+                      {option.value === 'none' && (
+                        <i className="pi pi-ban text-gray-400 text-xs"></i>
+                      )}
+                      <span className="text-sm">{option.label}</span>
+                    </div>
+                  );
+                }}
+              />
+              {/* Clear Filter Button */}
+              {selectedCollectionFilter !== null && (
+                <Button
+                  icon="pi pi-times"
+                  className="p-button-text p-button-sm"
+                  tooltip="Clear filter"
+                  onClick={() => setSelectedCollectionFilter(null)}
+                />
+              )}
+            </div>
+          )}
           
           {/* Active Users */}
           {activeUsers.length > 0 && (
@@ -896,19 +1152,70 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
           )}
         </div>
         
-        {/* Typing Indicators */}
-        {typingUsers.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">
-              {typingUsers.map(u => u.username).join(', ')} typing...
-            </span>
-            <div className="flex space-x-1">
-              <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse"></div>
-              <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse delay-75"></div>
-              <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse delay-150"></div>
+        {/* Right side actions */}
+        <div className="flex items-center gap-3">
+          {/* Filter Status */}
+          {selectedCollectionFilter && (
+            <div className="flex items-center gap-2">
+              {selectedCollectionFilter === 'none' ? (
+                <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full">
+                  <i className="pi pi-ban text-gray-500 text-xs"></i>
+                  <span className="text-xs text-gray-600">Showing: No Collection</span>
+                </div>
+              ) : (
+                (() => {
+                  const filterCollection = collections.find(c => c.id === selectedCollectionFilter);
+                  return filterCollection ? (
+                    <div className="flex items-center gap-1 px-2 py-1 rounded-full" style={{ backgroundColor: filterCollection.color + '20' }}>
+                      <div 
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: filterCollection.color }}
+                      />
+                      <span className="text-xs" style={{ color: filterCollection.color }}>Showing: {filterCollection.name}</span>
+                    </div>
+                  ) : null;
+                })()
+              )}
+              <span className="text-xs text-gray-500">
+                ({tasks.filter(t => {
+                  if (selectedCollectionFilter === 'none') return !t.collectionId;
+                  return t.collectionId === selectedCollectionFilter;
+                }).length} tasks)
+              </span>
             </div>
-          </div>
-        )}
+          )}
+          
+          {/* Collections Count */}
+          {collections.length > 0 && (
+            <span className="text-sm text-gray-600">
+              {collections.length} collection{collections.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          
+          {/* New Collection Button */}
+          <Button
+            icon="pi pi-folder-plus"
+            label="New Collection"
+            size="small"
+            outlined
+            className="text-sm"
+            onClick={handleNewCollection}
+          />
+          
+          {/* Typing Indicators */}
+          {typingUsers.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">
+                {typingUsers.map(u => u.username).join(', ')} typing...
+              </span>
+              <div className="flex space-x-1">
+                <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse"></div>
+                <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse delay-75"></div>
+                <div className="w-1 h-1 bg-gray-400 rounded-full animate-pulse delay-150"></div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       
       <DndContext
@@ -917,7 +1224,7 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-6 overflow-x-auto p-6 h-full">
+        <div className="flex gap-6 overflow-x-auto p-6 min-h-screen pb-20">
           {columns.map(column => (
             <KanbanColumn key={column.id} column={column} />
           ))}
@@ -931,6 +1238,17 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
           ) : null}
         </DragOverlay>
       </DndContext>
+      
+      {/* Collection Management Dialog */}
+      <CollectionDialog
+        visible={showCollectionDialog}
+        collection={editingCollection}
+        onHide={() => {
+          setShowCollectionDialog(false);
+          setEditingCollection(undefined);
+        }}
+        onSave={handleCreateCollection}
+      />
     </div>
   );
 }

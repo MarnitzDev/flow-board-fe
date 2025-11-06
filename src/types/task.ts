@@ -36,6 +36,19 @@ export interface Column {
   taskIds: string[];
 }
 
+export interface Collection {
+  id: string;
+  name: string;
+  description?: string;
+  color: string;
+  projectId: string;
+  createdBy: string;
+  order: number;
+  isArchived: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -47,6 +60,11 @@ export interface Task {
   projectId: string;
   boardId: string;
   columnId: string;
+  collectionId?: string; // Optional - tasks can exist without collections
+  parentTaskId?: string; // For subtasks
+  isSubtask: boolean; // Auto-set when parentTaskId exists
+  order: number; // For ordering within collections/columns
+  createdBy: string; // Creator of the task
   labels: Label[];
   startDate?: Date;
   dueDate?: Date;
@@ -75,10 +93,11 @@ export interface Label {
 export interface Comment {
   id: string;
   content: string;
-  author: User;
+  createdBy: User; // Changed from 'author'
   taskId: string;
-  createdAt: Date;
   mentions: string[]; // user IDs mentioned
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Attachment {
@@ -105,6 +124,9 @@ export interface TaskFilter {
   status?: string[];
   priority?: string[];
   labels?: string[];
+  collectionId?: string[]; // Filter by collections
+  parentTaskId?: string; // Filter by parent task (for subtasks)
+  isSubtask?: boolean; // Filter subtasks vs main tasks
   dueDate?: {
     start?: Date;
     end?: Date;
@@ -113,7 +135,7 @@ export interface TaskFilter {
 }
 
 export interface TaskSort {
-  field: 'title' | 'dueDate' | 'priority' | 'createdAt' | 'updatedAt';
+  field: 'title' | 'dueDate' | 'priority' | 'createdAt' | 'updatedAt' | 'order';
   direction: 'asc' | 'desc';
 }
 
@@ -150,8 +172,19 @@ export interface CreateTaskForm {
   assigneeId?: string;
   priority: 'low' | 'medium' | 'high';
   dueDate?: Date;
+  startDate?: Date;
   labels: string[];
   columnId: string;
+  collectionId?: string; // Optional collection assignment
+  parentTaskId?: string; // For creating subtasks
+}
+
+export interface CreateCollectionForm {
+  name: string;
+  description?: string;
+  color: string;
+  projectId: string;
+  order?: number;
 }
 
 export interface CreateProjectForm {
@@ -171,6 +204,16 @@ export interface SocketEvents {
     fromColumnId: string;
     toColumnId: string;
     position: number;
+  };
+  'subtask:created': Task;
+  'subtask:updated': Task;
+  'subtask:deleted': string;
+  'collection:created': Collection;
+  'collection:updated': Collection;
+  'collection:deleted': string;
+  'collection:reordered': {
+    projectId: string;
+    orders: Array<{ id: string; order: number }>;
   };
   'comment:added': Comment;
   'user:joined': User;

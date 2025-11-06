@@ -267,6 +267,75 @@ class ApiClient {
     }
     return this.delete<ApiResponse>(`/api/tasks/${taskId}`);
   }
+
+  // Collection methods
+  async getCollectionsByProject(projectId: string): Promise<ApiResponse> {
+    if (!this.token) {
+      throw new Error('No authentication token. Please login first.');
+    }
+    return this.get<ApiResponse>(`/api/collections/project/${projectId}`);
+  }
+
+  async createCollection(collectionData: {
+    name: string;
+    description?: string;
+    color: string;
+    projectId: string;
+    order?: number;
+  }): Promise<ApiResponse> {
+    if (!this.token) {
+      throw new Error('No authentication token. Please login first.');
+    }
+    return this.post<ApiResponse>('/api/collections', collectionData);
+  }
+
+  async updateCollection(collectionId: string, collectionData: {
+    name?: string;
+    description?: string;
+    color?: string;
+    order?: number;
+    isArchived?: boolean;
+  }): Promise<ApiResponse> {
+    if (!this.token) {
+      throw new Error('No authentication token. Please login first.');
+    }
+    return this.put<ApiResponse>(`/api/collections/${collectionId}`, collectionData);
+  }
+
+  async deleteCollection(collectionId: string): Promise<ApiResponse> {
+    if (!this.token) {
+      throw new Error('No authentication token. Please login first.');
+    }
+    return this.delete<ApiResponse>(`/api/collections/${collectionId}`);
+  }
+
+  async reorderCollections(projectId: string, orders: Array<{ id: string; order: number }>): Promise<ApiResponse> {
+    if (!this.token) {
+      throw new Error('No authentication token. Please login first.');
+    }
+    return this.put<ApiResponse>('/api/collections/reorder', { projectId, orders });
+  }
+
+  // Subtask methods
+  async createSubtask(parentTaskId: string, subtaskData: {
+    title: string;
+    description?: string;
+    priority?: string;
+    assignee?: string;
+    dueDate?: Date;
+  }): Promise<ApiResponse> {
+    if (!this.token) {
+      throw new Error('No authentication token. Please login first.');
+    }
+    return this.post<ApiResponse>(`/api/tasks/${parentTaskId}/subtasks`, subtaskData);
+  }
+
+  async getSubtasks(parentTaskId: string): Promise<ApiResponse> {
+    if (!this.token) {
+      throw new Error('No authentication token. Please login first.');
+    }
+    return this.get<ApiResponse>(`/api/tasks/${parentTaskId}/subtasks`);
+  }
 }
 
 // Create and export the API client instance
@@ -308,11 +377,45 @@ export const tasksApi = {
     projectId: string;
     boardId: string;
     columnId: string;
+    collectionId?: string; // New optional field
+    parentTaskId?: string; // New optional field for subtasks
     dueDate?: string;
+    startDate?: string; // New field
     labels?: Array<{ name: string; color: string }>;
   }) => apiClient.createTask(taskData),
   update: (taskId: string, taskData: unknown) => apiClient.updateTask(taskId, taskData),
-  delete: (taskId: string) => apiClient.deleteTask(taskId)
+  delete: (taskId: string) => apiClient.deleteTask(taskId),
+  // Subtask methods
+  createSubtask: (parentTaskId: string, subtaskData: {
+    title: string;
+    description?: string;
+    priority?: string;
+    assignee?: string;
+    dueDate?: Date;
+  }) => apiClient.createSubtask(parentTaskId, subtaskData),
+  getSubtasks: (parentTaskId: string) => apiClient.getSubtasks(parentTaskId)
+};
+
+// Collection API exports
+export const collectionsApi = {
+  getByProject: (projectId: string) => apiClient.getCollectionsByProject(projectId),
+  create: (collectionData: {
+    name: string;
+    description?: string;
+    color: string;
+    projectId: string;
+    order?: number;
+  }) => apiClient.createCollection(collectionData),
+  update: (collectionId: string, collectionData: {
+    name?: string;
+    description?: string;
+    color?: string;
+    order?: number;
+    isArchived?: boolean;
+  }) => apiClient.updateCollection(collectionId, collectionData),
+  delete: (collectionId: string) => apiClient.deleteCollection(collectionId),
+  reorder: (projectId: string, orders: Array<{ id: string; order: number }>) => 
+    apiClient.reorderCollections(projectId, orders)
 };
 
 // Token manager for backward compatibility

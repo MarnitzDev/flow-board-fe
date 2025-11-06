@@ -9,7 +9,6 @@ import { useAuth } from '@/context/auth-context';
 import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
-import { Card } from 'primereact/card';
 import { Toolbar } from 'primereact/toolbar';
 import { Dialog } from 'primereact/dialog';
 import { Toast } from 'primereact/toast';
@@ -348,35 +347,35 @@ export function GanttView({ filters, onTaskClick, currentProject }: GanttViewPro
   }
 
   return (
-    <div className="timeline-view h-full">
+    <div className="timeline-view h-full w-full">
       <Toast ref={toast} />
       
-      <Card className="mb-3">
+      <div className="w-full">
         <Toolbar
           left={leftToolbarTemplate}
           right={rightToolbarTemplate}
-          className="mb-3"
+          className="mb-3 bg-white border border-gray-200 rounded-lg"
         />
         
-        <div className="gantt-container" style={{ height: 'calc(100vh - 300px)', overflow: 'auto' }}>
+        <div className="gantt-container w-full" style={{ height: 'calc(100vh - 200px)', overflow: 'auto' }}>
           {ganttTasks.length > 0 ? (
-            <div>
+            <div className="w-full">
               <Gantt
                 tasks={ganttTasks}
                 viewMode={viewMode}
                 onDateChange={handleTaskChange}
                 onExpanderClick={handleExpanderClick}
-                listCellWidth="200px"
-                columnWidth={viewMode === ViewMode.Month ? 60 : viewMode === ViewMode.Week ? 100 : 40}
+                listCellWidth="250px"
+                columnWidth={viewMode === ViewMode.Month ? 80 : viewMode === ViewMode.Week ? 120 : 60}
                 locale="en"
                 fontSize="12"
                 fontFamily="Arial, sans-serif"
                 barBackgroundColor="#f3f4f6"
                 barBackgroundSelectedColor="#e5e7eb"
-                rowHeight={40}
-                headerHeight={50}
+                rowHeight={45}
+                headerHeight={60}
               />
-              <div className="mt-3 text-sm text-muted-color">
+              <div className="mt-3 text-sm text-muted-color p-4 bg-gray-50 rounded-lg">
                 <p>💡 <strong>Timeline View Features:</strong></p>
                 <ul className="ml-4">
                   <li>• Drag task bars horizontally to change start/end dates</li>
@@ -388,14 +387,14 @@ export function GanttView({ filters, onTaskClick, currentProject }: GanttViewPro
               </div>
             </div>
           ) : (
-            <div className="flex flex-column align-items-center justify-content-center h-20rem text-muted-color">
+            <div className="flex flex-col items-center justify-center h-80 text-gray-500 bg-gray-50 rounded-lg m-4">
               <i className="pi pi-calendar text-6xl mb-3"></i>
-              <h3>No tasks found</h3>
-              <p>Create a new task or adjust your filters to see timeline data.</p>
+              <h3 className="text-xl font-semibold mb-2">No tasks found</h3>
+              <p className="text-center">Create a new task or adjust your filters to see timeline data.</p>
             </div>
           )}
         </div>
-      </Card>
+      </div>
 
       {/* Task Details Dialog */}
       <Dialog

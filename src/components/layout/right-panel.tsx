@@ -243,13 +243,13 @@ export function RightPanel({ isOpen, task, onClose, onTaskUpdate }: RightPanelPr
                 {task.comments.map((comment) => (
                   <div key={comment.id} className="flex gap-3">
                     <Avatar
-                      label={comment.author.username.charAt(0).toUpperCase()}
+                      label={comment.createdBy.username.charAt(0).toUpperCase()}
                       size="normal"
                       shape="circle"
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium">{comment.author.username}</span>
+                        <span className="text-sm font-medium">{comment.createdBy.username}</span>
                         <span className="text-xs text-gray-500">
                           {new Date(comment.createdAt).toLocaleDateString()}
                         </span>
