@@ -85,6 +85,11 @@ class ApiClient {
 
     console.log('Making request to:', url);
     console.log('Has token:', !!this.token);
+    console.log('Request options:', {
+      method: options.method || 'GET',
+      headers: Object.keys(headers),
+      hasBody: !!options.body
+    });
 
     try {
       const response = await fetch(url, {
@@ -92,16 +97,49 @@ class ApiClient {
         headers,
       });
 
-      const result = await response.json();
+      // Log response details for debugging
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        console.error('Failed to parse JSON response:', jsonError);
+        const textResponse = await response.text();
+        console.error('Raw response:', textResponse);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText} - ${textResponse}`);
+        }
+        
+        throw new Error('Invalid JSON response from server');
+      }
 
       if (!response.ok) {
-        console.error('API Error:', result);
-        throw new Error(result.error || result.message || `HTTP ${response.status}: ${response.statusText}`);
+        console.error('❌ API Error Details:');
+        console.error('- Status:', response.status);
+        console.error('- Status Text:', response.statusText);
+        console.error('- Response Body:', result);
+        console.error('- URL:', url);
+        console.error('- Method:', options.method || 'GET');
+        console.error('- Request Body:', options.body);
+        console.error('- Has Auth Token:', !!this.token);
+        
+        const errorMessage = result?.error || result?.message || `HTTP ${response.status}: ${response.statusText}`;
+        throw new Error(errorMessage);
       }
 
       return result;
     } catch (error) {
-      console.error('API request failed:', error);
+      console.error('❌ API request failed:', error);
+      console.error('Request details:', { 
+        url, 
+        method: options.method || 'GET', 
+        headers: Object.keys(headers),
+        hasBody: !!options.body,
+        bodyContent: options.body 
+      });
       throw error;
     }
   }
@@ -261,6 +299,13 @@ class ApiClient {
     return this.put<ApiResponse>(`/api/tasks/${taskId}`, taskData);
   }
 
+  async moveTask(taskId: string, moveData: { fromColumnId: string; toColumnId: string; position?: number }): Promise<ApiResponse> {
+    if (!this.token) {
+      throw new Error('No authentication token. Please login first.');
+    }
+    return this.put<ApiResponse>(`/api/tasks/${taskId}/move`, moveData);
+  }
+
   async deleteTask(taskId: string): Promise<ApiResponse> {
     if (!this.token) {
       throw new Error('No authentication token. Please login first.');
@@ -384,6 +429,8 @@ export const tasksApi = {
     labels?: Array<{ name: string; color: string }>;
   }) => apiClient.createTask(taskData),
   update: (taskId: string, taskData: unknown) => apiClient.updateTask(taskId, taskData),
+  move: (taskId: string, moveData: { fromColumnId: string; toColumnId: string; position?: number }) => 
+    apiClient.moveTask(taskId, moveData),
   delete: (taskId: string) => apiClient.deleteTask(taskId),
   // Subtask methods
   createSubtask: (parentTaskId: string, subtaskData: {

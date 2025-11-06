@@ -136,11 +136,84 @@ export function KanbanView({ currentProject }: KanbanViewProps) {
   } = useSocket();
   
   console.log('🔌 Socket connection status in KanbanBoard:', { isConnected });
-  console.log('🎯 Socket functions available:', { 
+  console.log('🎯 Socket functions available:', {
     hasJoinBoard: !!joinBoard, 
     hasMoveTask: !!moveTask, 
     hasOnTaskUpdated: !!onTaskUpdated 
   });
+
+  // Reusable function to fetch tasks data for a specific board
+  const fetchTasksData = useCallback(async (boardId?: string) => {
+    const targetBoardId = boardId || currentBoardId;
+    if (!targetBoardId || !token) {
+      console.log('⏭️ Skipping tasks fetch - missing boardId or token');
+      return;
+    }
+
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      console.log('🔄 Fetching updated tasks for board:', targetBoardId);
+      
+      const tasksResponse = await fetch(`${API_BASE_URL}/api/tasks/board/${targetBoardId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (tasksResponse.ok) {
+        const tasksData = await tasksResponse.json();
+        
+        if (tasksData && tasksData.success && Array.isArray(tasksData.data)) {
+          // Transform API response to match frontend types
+          const transformedTasks: Task[] = tasksData.data.map((task: any) => ({
+            id: task._id,
+            title: task.title,
+            description: task.description || '',
+            status: task.status,
+            priority: task.priority,
+            assignee: task.assignee ? {
+              id: task.assignee._id,
+              username: task.assignee.username,
+              email: task.assignee.email,
+              role: 'user' as const,
+              avatar: task.assignee.avatar
+            } : undefined,
+            reporter: {
+              id: task.reporter._id,
+              username: task.reporter.username,
+              email: task.reporter.email,
+              role: 'user' as const,
+              avatar: task.reporter.avatar
+            },
+            projectId: task.projectId._id || task.projectId,
+            boardId: task.boardId._id || task.boardId,
+            columnId: task.columnId,
+            collectionId: task.collectionId || undefined,
+            parentTaskId: task.parentTaskId || undefined,
+            isSubtask: task.isSubtask || false,
+            order: task.order || 0,
+            createdBy: task.createdBy || task.reporter._id,
+            labels: task.labels || [],
+            startDate: task.startDate ? new Date(task.startDate) : undefined,
+            dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
+            createdAt: new Date(task.createdAt),
+            updatedAt: new Date(task.updatedAt),
+            subtasks: task.subtasks || [],
+            comments: task.comments || [],
+            attachments: task.attachments || [],
+            timeTracked: task.timeTracked || 0,
+            dependencies: task.dependencies || []
+          }));
+          
+          setTasks(transformedTasks);
+          console.log(`✅ Successfully refreshed ${transformedTasks.length} tasks with updated order values`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch tasks data:', error);
+    }
+  }, [currentBoardId, token]);
 
   // Fetch tasks when project changes
   useEffect(() => {
@@ -525,9 +598,24 @@ export function KanbanView({ currentProject }: KanbanViewProps) {
               fromColumn: data.fromColumnId,
               toColumn: data.toColumnId,
               taskId: task.id,
-              eventTaskId: taskId
+              eventTaskId: taskId,
+              isSameColumn: data.fromColumnId === data.toColumnId
             });
-            return { ...task, columnId: data.toColumnId };
+            
+            // For same-column moves, we need to update the order, not just columnId
+            if (data.fromColumnId === data.toColumnId) {
+              console.log('🔄 Same-column reordering detected in socket event');
+              // For same-column moves, trigger a refresh to get updated order values
+              // This is more reliable than trying to calculate the order locally
+              setTimeout(() => {
+                console.log('🔄 Refreshing tasks to sync order changes from socket event');
+                fetchTasksData();
+              }, 100);
+              return task; // Return unchanged for now, refresh will update it
+            } else {
+              // Cross-column move - just update the columnId
+              return { ...task, columnId: data.toColumnId };
+            }
           }
           return task;
         });
@@ -919,22 +1007,74 @@ export function KanbanView({ currentProject }: KanbanViewProps) {
       
       if (isDroppingOnTask && overTask.id !== task.id) {
         // Reordering within the same column
-        console.log('� Reordering task within same column');
+        console.log('🔄 Reordering task within same column');
         
-        const columnTasks = tasks.filter(t => t.columnId === task.columnId);
+        const columnTasks = tasks.filter(t => t.columnId === task.columnId).sort((a, b) => (a.order || 0) - (b.order || 0));
         const oldIndex = columnTasks.findIndex(t => t.id === task.id);
         const newIndex = columnTasks.findIndex(t => t.id === overTask.id);
         
         if (oldIndex !== newIndex) {
+          console.log('📊 Reorder details:', {
+            taskTitle: task.title,
+            oldIndex,
+            newIndex,
+            oldOrder: task.order,
+            targetOrder: overTask.order,
+            columnTasks: columnTasks.map(t => ({ id: t.id, title: t.title, order: t.order }))
+          });
+          
           // Reorder tasks within the column
           const reorderedColumnTasks = arrayMove(columnTasks, oldIndex, newIndex);
           
-          // Update the full task list
+          // Update order values to match new positions (1-based)
+          const tasksWithUpdatedOrder = reorderedColumnTasks.map((task, index) => ({
+            ...task,
+            order: index + 1
+          }));
+          
+          // Update the full task list optimistically
           setTasks(prevTasks => {
             const otherTasks = prevTasks.filter(t => t.columnId !== task.columnId);
-            return [...otherTasks, ...reorderedColumnTasks];
+            return [...otherTasks, ...tasksWithUpdatedOrder];
           });
           
+          // Persist the new order to backend
+          const persistOrderChanges = async () => {
+            try {
+              console.log('💾 Persisting order changes to backend...');
+              
+              // Update each task's order in the backend
+              const updatePromises = tasksWithUpdatedOrder.map(async (taskToUpdate) => {
+                return tasksApi.update(taskToUpdate.id, {
+                  order: taskToUpdate.order
+                });
+              });
+              
+              await Promise.all(updatePromises);
+              console.log('✅ All task orders updated in backend');
+              
+              // Emit socket event for real-time sync
+              if (currentBoardId && moveTask) {
+                moveTask({
+                  taskId: task.id,
+                  fromColumnId: task.columnId,
+                  toColumnId: task.columnId,
+                  newIndex: newIndex,
+                  boardId: currentBoardId
+                });
+              }
+              
+            } catch (error) {
+              console.error('❌ Failed to persist order changes:', error);
+              // Revert UI on error
+              setTasks(prevTasks => {
+                const otherTasks = prevTasks.filter(t => t.columnId !== task.columnId);
+                return [...otherTasks, ...columnTasks]; // Revert to original order
+              });
+            }
+          };
+          
+          persistOrderChanges();
           console.log('✅ Same-column reordering complete');
         }
       } else {
