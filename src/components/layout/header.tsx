@@ -12,11 +12,10 @@ import { useAppNavigation } from '@/lib/navigation';
 import { ViewType } from '@/types/task';
 
 interface HeaderProps {
-  onToggleSidebar?: () => void;
-  onCreateTask?: () => void;
+  onToggleSidebar: () => void;
 }
 
-export function Header({ onToggleSidebar, onCreateTask }: HeaderProps) {
+export function Header({ onToggleSidebar }: HeaderProps) {
   const { user, logout, isAuthenticated } = useAuth();
   const { currentProject, currentView } = useAppNavigation();
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -110,15 +109,6 @@ export function Header({ onToggleSidebar, onCreateTask }: HeaderProps) {
     <div className="flex items-center gap-2">
       {isAuthenticated ? (
         <>
-          {onCreateTask && (
-            <Button
-              icon="pi pi-plus"
-              label="New Task"
-              size="small"
-              onClick={onCreateTask}
-              className="hidden sm:flex"
-            />
-          )}
           <Button
             icon="pi pi-bell"
             severity="secondary"

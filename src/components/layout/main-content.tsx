@@ -37,7 +37,6 @@ export function MainContent({
           <KanbanView
             filters={filters}
             sorting={sorting}
-            onTaskClick={onTaskClick}
             currentProject={currentProject}
             currentBoard={currentBoard}
           />

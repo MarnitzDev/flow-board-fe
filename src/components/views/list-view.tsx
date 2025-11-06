@@ -640,7 +640,7 @@ export function ListView({ onTaskClick, currentProject }: ListViewProps) {
   }
 
   return (
-    <div className="h-full p-6">
+    <div className="p-6">
       <Toast ref={toast} />
       <ConfirmDialog />
       

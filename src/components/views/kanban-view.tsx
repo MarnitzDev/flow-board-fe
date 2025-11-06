@@ -5,11 +5,12 @@ import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Avatar } from 'primereact/avatar';
 import { Badge } from 'primereact/badge';
-import { TaskFilter, TaskSort, Task, Project, Board, Column, Collection, CreateCollectionForm } from '@/types/task';
+import { TaskFilter, TaskSort, Task, Project, Board, Column, Collection, CreateCollectionForm, User } from '@/types/task';
 import { useAuth } from '@/context/auth-context';
 import { useSocket } from '@/context/socket-context';
-import { tasksApi } from '@/lib/api';
+import { tasksApi, apiClient } from '@/lib/api';
 import { CollectionDialog } from '@/components/collections/collection-dialog';
+import { TaskDialog, CreateTaskForm } from '@/components/tasks';
 import {
   DndContext,
   DragEndEvent,
@@ -25,18 +26,18 @@ import {
   SortableContext,
   verticalListSortingStrategy,
   useSortable,
+  arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 interface KanbanViewProps {
   filters?: TaskFilter;
   sorting?: TaskSort;
-  onTaskClick: (task?: Task) => void;
   currentProject?: Project;
   currentBoard?: Board;
 }
 
-export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
+export function KanbanView({ currentProject }: KanbanViewProps) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -46,6 +47,11 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   // Collection management state
   const [showCollectionDialog, setShowCollectionDialog] = useState(false);
   const [editingCollection, setEditingCollection] = useState<Collection | undefined>(undefined);
+  
+  // Task management state
+  const [showTaskDialog, setShowTaskDialog] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
+  const [selectedColumnForNewTask, setSelectedColumnForNewTask] = useState<string | undefined>(undefined);
   
   // Collection filtering state
   const [selectedCollectionFilter, setSelectedCollectionFilter] = useState<string | null>(null); // null = all, 'none' = no collection, or collection ID
@@ -115,7 +121,7 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
       },
     })
   );
-  const { isAuthenticated, token } = useAuth();
+  const { isAuthenticated, token, user } = useAuth();
   const { 
     isConnected, 
     joinBoard, 
@@ -139,6 +145,11 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   // Fetch tasks when project changes
   useEffect(() => {
     console.log('🚀 KanbanBoard useEffect triggered. Socket status:', { isConnected, hasProject: !!currentProject, isAuthenticated, hasToken: !!token });
+    
+    // Initialize API token
+    if (token) {
+      apiClient.setToken(token);
+    }
     
     const fetchData = async () => {
       if (!currentProject || !isAuthenticated || !token) {
@@ -247,6 +258,10 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
               // Join the board room for real-time updates
               if (isConnected) {
                 console.log('🔗 Joining board room for real-time updates:', board._id);
+                console.log('🔗 Socket connection details:', { 
+                  isConnected, 
+                  hasJoinBoardFunction: !!joinBoard
+                });
                 joinBoard(board._id);
                 console.log('✅ Board room join requested');
               } else {
@@ -449,17 +464,23 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
     // Listen for task deletion
     const unsubscribeTaskDeleted = onTaskDeleted((taskId: string) => {
       console.log('🗑️ Real-time: Task deleted event received', taskId);
-      setTasks(prev => prev.filter(task => !taskMatches(task, taskId)));
+      console.log('📊 Current tasks before deletion:', tasks.map(t => ({ id: t.id, title: t.title })));
+      setTasks(prev => {
+        const filtered = prev.filter(task => !taskMatches(task, taskId));
+        console.log('📊 Tasks after deletion filter:', filtered.map(t => ({ id: t.id, title: t.title })));
+        return filtered;
+      });
     });
 
     // Listen for task movement (alternative approach)
     const unsubscribeTaskMoved = onTaskMoved((data) => {
-      console.log('🚀 Real-time: Task moved event received', {
+      console.log('🚀 Real-time: Task moved event received from socket!', {
         data,
         dataKeys: Object.keys(data),
         currentBoardId,
         eventBoardId: data.boardId,
-        boardIdMatch: data.boardId === currentBoardId
+        boardIdMatch: data.boardId === currentBoardId,
+        timestamp: new Date().toISOString()
       });
       
       // Check if this move is for the current board
@@ -561,10 +582,83 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
           }
         };
         
+        // Test event handler for debugging
+        const handleTestDrag = (data: any) => {
+          console.log('🧪 TEST EVENT RECEIVED from other user/window:', data);
+        };
+        
+        // Handler for confirmed task moves (after database update) - your new backend event
+        const handleTaskMoveConfirmed = (data: any) => {
+          console.log('✅ CONFIRMED task move received from backend:', data);
+          
+          // Extract task ID from the task object or fallback to taskId
+          const taskId = data.task?.id || data.task?._id || data.taskId;
+          
+          if (data.boardId === currentBoardId && taskId) {
+            console.log('🔄 Updating task in UI:', {
+              taskId,
+              fromColumn: data.fromColumnId,
+              toColumn: data.toColumnId,
+              currentTaskCount: tasks.length
+            });
+            
+            setTasks(prev => {
+              const updatedTasks = prev.map(task => 
+                taskMatches(task, taskId) 
+                  ? { ...task, columnId: data.toColumnId }
+                  : task
+              );
+              
+              console.log('📊 Task update result:', {
+                originalCount: prev.length,
+                updatedCount: updatedTasks.length,
+                taskMoved: updatedTasks.some(t => taskMatches(t, taskId) && t.columnId === data.toColumnId)
+              });
+              
+              return updatedTasks;
+            });
+          } else {
+            console.log('❌ Cannot update task - missing data:', {
+              boardIdMatch: data.boardId === currentBoardId,
+              hasTaskId: !!taskId,
+              currentBoardId,
+              dataBoardId: data.boardId
+            });
+          }
+        };
+        
+        // Handler for failed task moves (rollback) - your new backend event
+        const handleTaskMoveFailed = (data: any) => {
+          console.log('❌ TASK MOVE FAILED - Rolling back:', data);
+          
+          const taskId = data.task?.id || data.task?._id || data.taskId;
+          
+          if (data.boardId === currentBoardId && taskId) {
+            console.log('🔄 Rolling back task move:', {
+              taskId,
+              backToColumn: data.fromColumnId
+            });
+            
+            setTasks(prev => 
+              prev.map(task => 
+                taskMatches(task, taskId) 
+                  ? { ...task, columnId: data.fromColumnId }
+                  : task
+              )
+            );
+          }
+        };
+        
         socketService.getSocket()?.on('task:manual-sync', handleManualSync);
+        socketService.getSocket()?.on('test:drag', handleTestDrag);
+        socketService.getSocket()?.on('taskMoved', handleTaskMoveConfirmed);
+        socketService.getSocket()?.on('task:move_failed', handleTaskMoveFailed);
         
         unsubscribeManualSync = () => {
           socketService.getSocket()?.off('task:manual-sync', handleManualSync);
+          socketService.getSocket()?.off('test:drag', handleTestDrag);
+          socketService.getSocket()?.off('taskMoved', handleTaskMoveConfirmed);
+          socketService.getSocket()?.off('task:move_failed', handleTaskMoveFailed);
         };
       }
     });
@@ -669,9 +763,92 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
     }
   };
 
-  const handleEditCollection = (collection: Collection) => {
-    setEditingCollection(collection);
-    setShowCollectionDialog(true);
+  // Task management functions
+  const handleCreateTask = async (taskData: CreateTaskForm) => {
+    if (!currentProject || !token || !currentBoardId) return;
+    
+    try {
+      console.log('Creating task with data:', taskData);
+      
+      // Create task using the API
+      const result = await tasksApi.create({
+        title: taskData.title,
+        description: taskData.description,
+        priority: taskData.priority,
+        assigneeId: taskData.assigneeId,
+        projectId: taskData.projectId,
+        boardId: taskData.boardId,
+        columnId: taskData.columnId,
+        collectionId: taskData.collectionId,
+        labels: taskData.labels,
+        dueDate: taskData.dueDate?.toISOString()
+      });
+
+      if (result.success && result.data) {
+        console.log('✅ Task created successfully:', result.data);
+        
+        // Transform the created task to match frontend format
+        const taskData = result.data as any; // Type assertion for API response
+        const newTask: Task = {
+          id: taskData._id || taskData.id,
+          title: taskData.title,
+          description: taskData.description || '',
+          status: 'todo' as const,
+          priority: taskData.priority,
+          assignee: taskData.assignee ? {
+            id: taskData.assignee._id || taskData.assignee.id,
+            username: taskData.assignee.username,
+            email: taskData.assignee.email,
+            role: 'user' as const,
+            avatar: taskData.assignee.avatar
+          } : undefined,
+          reporter: taskData.reporter || taskData.createdBy,
+          projectId: taskData.projectId,
+          boardId: taskData.boardId,
+          columnId: taskData.columnId,
+          collectionId: taskData.collectionId,
+          parentTaskId: taskData.parentTaskId,
+          isSubtask: taskData.isSubtask || false,
+          order: taskData.order || 0,
+          createdBy: taskData.createdBy,
+          labels: taskData.labels || [],
+          startDate: taskData.startDate ? new Date(taskData.startDate) : undefined,
+          dueDate: taskData.dueDate ? new Date(taskData.dueDate) : undefined,
+          createdAt: new Date(taskData.createdAt),
+          updatedAt: new Date(taskData.updatedAt),
+          subtasks: taskData.subtasks || [],
+          comments: taskData.comments || [],
+          attachments: taskData.attachments || [],
+          timeTracked: taskData.timeTracked || 0,
+          dependencies: taskData.dependencies || []
+        };
+        
+        // Add to tasks state
+        setTasks(prev => [...prev, newTask]);
+        
+        // Close dialog and reset state
+        setShowTaskDialog(false);
+        setEditingTask(undefined);
+        setSelectedColumnForNewTask(undefined);
+      } else {
+        throw new Error(result.message || 'Failed to create task');
+      }
+    } catch (error) {
+      console.error('Error creating task:', error);
+      throw error; // Re-throw to let the dialog handle the error
+    }
+  };
+
+  const handleEditTask = (task: Task) => {
+    setEditingTask(task);
+    setSelectedColumnForNewTask(undefined);
+    setShowTaskDialog(true);
+  };
+
+  const handleNewTask = (columnId?: string) => {
+    setEditingTask(undefined);
+    setSelectedColumnForNewTask(columnId);
+    setShowTaskDialog(true);
   };
 
   const handleNewCollection = () => {
@@ -696,22 +873,79 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    
+    console.log('🎬 Drag end started:', {
+      activeId: active.id,
+      overId: over?.id,
+      hasOver: !!over
+    });
+    
     setActiveTask(null);
     setIsDragging(false);
 
-    if (!over) return;
+    if (!over) {
+      console.log('🔄 Drag ended with no drop target');
+      return;
+    }
 
     const taskId = active.id as string;
-    const newColumnId = over.id as string;
     
     // Find the task being moved
     const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
+    if (!task) {
+      console.log('❌ Task not found for drag operation:', taskId);
+      return;
+    }
 
-    // If dropped on the same column, do nothing
-    if (task.columnId === newColumnId) return;
+    // Determine if we're dropping on a column or on another task
+    const overTask = tasks.find(t => t.id === over.id);
+    const isDroppingOnTask = !!overTask;
+    const targetColumnId = isDroppingOnTask ? overTask.columnId : (over.id as string);
+
+    console.log('🎯 Drag operation details:', {
+      taskId: task.id,
+      taskTitle: task.title,
+      fromColumn: task.columnId,
+      toColumn: targetColumnId,
+      isDroppingOnTask,
+      overTaskTitle: overTask?.title,
+      isSameColumn: task.columnId === targetColumnId,
+      tasksCount: tasks.length
+    });
+
+    // If dropped on the same column (either on the column droppable or on a task in the same column)
+    if (task.columnId === targetColumnId) {
+      console.log('✅ Task dropped on same column, handling reordering');
+      
+      if (isDroppingOnTask && overTask.id !== task.id) {
+        // Reordering within the same column
+        console.log('� Reordering task within same column');
+        
+        const columnTasks = tasks.filter(t => t.columnId === task.columnId);
+        const oldIndex = columnTasks.findIndex(t => t.id === task.id);
+        const newIndex = columnTasks.findIndex(t => t.id === overTask.id);
+        
+        if (oldIndex !== newIndex) {
+          // Reorder tasks within the column
+          const reorderedColumnTasks = arrayMove(columnTasks, oldIndex, newIndex);
+          
+          // Update the full task list
+          setTasks(prevTasks => {
+            const otherTasks = prevTasks.filter(t => t.columnId !== task.columnId);
+            return [...otherTasks, ...reorderedColumnTasks];
+          });
+          
+          console.log('✅ Same-column reordering complete');
+        }
+      } else {
+        console.log('✅ Task dropped on same position, no change needed');
+      }
+      
+      return;
+    }
 
     const oldColumnId = task.columnId;
+    const newColumnId = targetColumnId;
 
     // Optimistically update the UI (use columnId instead of status)
     setTasks(prevTasks => 
@@ -736,21 +970,23 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         const updatedTask = await tasksApi.update(taskId, { columnId: newColumnId });
         console.log('Task update API response:', updatedTask);
         
-        // Force emit a custom real-time event for immediate sync
+        // Emit socket event for real-time sync to other users
         if (currentBoardId) {
           // Get the column tasks for new index calculation
           const columnTasks = tasks.filter(t => t.columnId === newColumnId && t.id !== taskId);
           const newIndex = columnTasks.length;
           
-          console.log('Emitting custom moveTask event:', {
+          console.log('🚀 Emitting moveTask socket event:', {
             taskId,
             fromColumnId: oldColumnId,
             toColumnId: newColumnId,
             newIndex,
-            boardId: currentBoardId
+            boardId: currentBoardId,
+            socketConnected: isConnected,
+            hasMoveTaskFunction: !!moveTask
           });
           
-          // Emit move event
+          // Emit move event via socket context
           moveTask({
             taskId,
             fromColumnId: oldColumnId,
@@ -759,26 +995,33 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
             boardId: currentBoardId
           });
           
-          // ALSO emit a manual task update event for other browsers
-          // This ensures sync even if backend doesn't emit task:updated
-          const fullTask = tasks.find(t => t.id === taskId);
-          if (fullTask) {
-            const updatedFullTask = { ...fullTask, columnId: newColumnId };
-            console.log('Manually emitting task update for sync:', updatedFullTask);
-            
-            // Use the socket service directly to emit a custom sync event
-            import('@/lib/socket').then(({ socketService }) => {
-              if (socketService.getSocket()) {
-                socketService.getSocket()?.emit('task:manual-sync', {
-                  boardId: currentBoardId,
-                  task: updatedFullTask,
-                  action: 'move',
-                  fromColumn: oldColumnId,
-                  toColumn: newColumnId
+          // TEMPORARY: Also emit a test event to verify socket communication
+          import('@/lib/socket').then(({ socketService }) => {
+            if (socketService.getSocket()) {
+              console.log('🧪 Emitting test event for debugging...');
+              socketService.getSocket()?.emit('test:drag', {
+                message: 'Drag test from frontend',
+                boardId: currentBoardId,
+                timestamp: new Date().toISOString(),
+                taskId
+              });
+              
+              // FALLBACK: Manually emit task update for other users
+              const taskToSync = tasks.find(t => t.id === taskId);
+              if (taskToSync) {
+                console.log('📡 Manually emitting task:updated event as fallback');
+                socketService.getSocket()?.emit('task:updated', {
+                  ...taskToSync,
+                  columnId: newColumnId,
+                  boardId: currentBoardId
                 });
               }
-            });
-          }
+            }
+          });
+          
+          console.log('✅ Socket moveTask event emitted successfully');
+        } else {
+          console.log('❌ Cannot emit socket event - no currentBoardId');
         }
       } catch (error) {
         console.error('Failed to move task:', error);
@@ -823,17 +1066,10 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
       ? collections.find(c => c.id === task.collectionId)
       : undefined;
 
-    // Debug logging
-    if (task.collectionId) {
-      console.log(`Task "${task.title}" has collectionId:`, task.collectionId);
-      console.log('Available collections:', collections.map(c => ({ id: c.id, name: c.name })));
-      console.log('Found collection:', taskCollection?.name || 'NOT FOUND');
-    }
-
     return (
       <Card 
         className="mb-3 cursor-pointer hover:shadow-md transition-shadow"
-        onClick={() => onTaskClick(task)}
+        onClick={() => handleEditTask(task)}
       >
         <div className="space-y-3">
           {/* Collection indicator */}
@@ -948,15 +1184,15 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
       setNodeRef,
       transform,
       transition,
-      isDragging,
+      isDragging: isItemDragging,
     } = useSortable({ id: task.id });
 
     const style = {
       transform: CSS.Transform.toString(transform),
       transition,
-      opacity: isDragging ? 0.3 : 1,
-      cursor: isDragging ? 'grabbing' : 'grab',
-      zIndex: isDragging ? 1000 : 'auto',
+      opacity: 1, // Keep full opacity - don't fade out the dragged item
+      cursor: isItemDragging ? 'grabbing' : 'grab',
+      zIndex: isItemDragging ? 1000 : 'auto',
     };
 
     return (
@@ -965,7 +1201,7 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         style={style} 
         {...attributes} 
         {...listeners}
-        className={`transition-all duration-200 ${isDragging ? 'scale-105 shadow-2xl rotate-2' : 'hover:shadow-md'}`}
+        className={`transition-all duration-200 ${isItemDragging ? 'scale-105 shadow-2xl rotate-2' : 'hover:shadow-md'}`}
       >
         <TaskCard task={task} />
       </div>
@@ -1028,9 +1264,9 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
     });
 
     return (
-      <div className={`flex-1 min-w-80 bg-gray-50 rounded-lg p-4 transition-all duration-300 flex flex-col h-full ${
+      <div className={`flex-1 min-w-80 bg-gray-50 rounded-lg p-4 transition-all duration-300 flex flex-col h-full border border-gray-200 ${
         isDragging ? 'shadow-lg ring-2 ring-gray-200' : ''
-      } ${isOver ? 'ring-2 ring-blue-400 shadow-xl' : ''}`}>
+      } ${isOver ? 'ring-2 ring-blue-400 shadow-xl border-blue-300' : ''}`}>
         {/* Column header */}
         <div className="flex items-center justify-between mb-4 flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -1040,16 +1276,10 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
               {column.name}
             </h3>
             <Badge value={columnTasks.length} className="bg-gray-200 text-gray-700" />
-            {isOver && (
+            {(isOver || isDragging) && (
               <i className="pi pi-arrow-down text-blue-500 animate-bounce ml-2"></i>
             )}
           </div>
-          
-          <Button 
-            icon="pi pi-plus" 
-            className="p-button-sm p-button-text p-button-rounded"
-            onClick={() => onTaskClick()}
-          />
         </div>
 
         {/* Droppable Tasks Area */}
@@ -1088,16 +1318,17 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   // Get unique values for filter options
   const uniqueUsers = React.useMemo(() => {
     const usersSet = new Set();
-    const users: { id: string; username: string; avatar?: string }[] = [];
+    const users: User[] = [];
     
     tasks.forEach(task => {
       if (task.assignee && !usersSet.has(task.assignee.id)) {
         usersSet.add(task.assignee.id);
-        users.push({
-          id: task.assignee.id,
-          username: task.assignee.username,
-          avatar: task.assignee.avatar
-        });
+        users.push(task.assignee);
+      }
+      // Also add reporters
+      if (task.reporter && !usersSet.has(task.reporter.id)) {
+        usersSet.add(task.reporter.id);
+        users.push(task.reporter);
       }
     });
     
@@ -1242,6 +1473,15 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         
         {/* Right side actions */}
         <div className="flex items-center gap-3">
+          {/* New Task Button */}
+          <Button
+            icon="pi pi-plus"
+            label="New Task"
+            size="small"
+            className="text-sm"
+            onClick={() => handleNewTask()}
+          />
+          
           {/* New Collection Button */}
           <Button
             icon="pi pi-folder-plus"
@@ -1505,6 +1745,27 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         }}
         onSave={handleCreateCollection}
       />
+      
+      {/* Task Management Dialog */}
+      {currentProject && currentBoardId && (
+        <TaskDialog
+          visible={showTaskDialog}
+          task={editingTask}
+          onHide={() => {
+            setShowTaskDialog(false);
+            setEditingTask(undefined);
+            setSelectedColumnForNewTask(undefined);
+          }}
+          onSave={handleCreateTask}
+          projectId={currentProject.id}
+          boardId={currentBoardId}
+          columnId={selectedColumnForNewTask}
+          columns={columns}
+          collections={collections}
+          users={uniqueUsers}
+          existingLabels={uniqueLabels.map(l => ({ ...l, id: l.id }))}
+        />
+      )}
     </div>
   );
 }

@@ -52,7 +52,6 @@ export function TaskLayout() {
       {/* Header */}
       <Header 
         onToggleSidebar={toggleSidebar}
-        onCreateTask={() => openTaskDialog()}
       />
 
       {/* Main Layout */}
