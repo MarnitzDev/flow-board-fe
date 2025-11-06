@@ -981,12 +981,6 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         {/* Column header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div 
-              className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                isOver ? 'scale-125 shadow-lg' : ''
-              }`}
-              style={{ backgroundColor: column.color }}
-            />
             <h3 className={`font-semibold text-gray-800 transition-all duration-300 ${
               isOver ? 'text-blue-600 scale-105' : ''
             }`}>
