@@ -5,7 +5,6 @@ import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Avatar } from 'primereact/avatar';
 import { Badge } from 'primereact/badge';
-import { Dropdown } from 'primereact/dropdown';
 import { TaskFilter, TaskSort, Task, Project, Board, Column, Collection, CreateCollectionForm } from '@/types/task';
 import { useAuth } from '@/context/auth-context';
 import { useSocket } from '@/context/socket-context';
@@ -50,6 +49,35 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   
   // Collection filtering state
   const [selectedCollectionFilter, setSelectedCollectionFilter] = useState<string | null>(null); // null = all, 'none' = no collection, or collection ID
+  
+  // Additional filtering state
+  const [selectedUserFilter, setSelectedUserFilter] = useState<string | null>(null); // null = all, user ID = specific user, 'unassigned' = no assignee
+  const [selectedLabelFilter, setSelectedLabelFilter] = useState<string | null>(null); // null = all, label ID = specific label
+  const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<string | null>(null); // null = all, 'high'|'medium'|'low' = specific priority
+  
+  // Filter sidebar state
+  const [showFilterSidebar, setShowFilterSidebar] = useState(false);
+  
+  // Click outside to close filter sidebar
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showFilterSidebar) {
+        const sidebar = document.getElementById('filter-sidebar');
+        const filterButton = document.getElementById('filter-button');
+        
+        if (sidebar && filterButton && 
+            !sidebar.contains(event.target as Node) && 
+            !filterButton.contains(event.target as Node)) {
+          setShowFilterSidebar(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showFilterSidebar]);
   
   // Drag and drop state
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -844,13 +872,6 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
             </div>
           )}
 
-          {/* Description preview */}
-          {task.description && (
-            <p className="text-sm text-gray-600 line-clamp-2">
-              {task.description}
-            </p>
-          )}
-
           {/* Footer */}
           <div className="flex items-center justify-between text-xs text-gray-500">
             <div className="flex items-center gap-2">
@@ -952,22 +973,54 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   };
 
   const KanbanColumn = ({ column }: { column: Column }) => {
-    // Filter tasks by columnId and collection filter
+    // Filter tasks by columnId and all active filters
     const columnTasks = tasks.filter(task => {
       // First filter by column
       if (task.columnId !== column.id) return false;
       
-      // Then filter by collection selection
-      if (selectedCollectionFilter === null) {
-        // Show all tasks when no filter is selected
-        return true;
-      } else if (selectedCollectionFilter === 'none') {
-        // Show only tasks with no collection
-        return !task.collectionId;
-      } else {
-        // Show only tasks with the selected collection
-        return task.collectionId === selectedCollectionFilter;
+      // Filter by collection selection
+      if (selectedCollectionFilter !== null) {
+        if (selectedCollectionFilter === 'none') {
+          // Show only tasks with no collection
+          if (task.collectionId) return false;
+        } else {
+          // Show only tasks with the selected collection
+          if (task.collectionId !== selectedCollectionFilter) return false;
+        }
       }
+      
+      // Filter by user/assignee
+      if (selectedUserFilter !== null) {
+        if (selectedUserFilter === 'unassigned') {
+          // Show only unassigned tasks
+          if (task.assignee) return false;
+        } else {
+          // Show only tasks assigned to the selected user
+          if (!task.assignee || task.assignee.id !== selectedUserFilter) return false;
+        }
+      }
+      
+      // Filter by label
+      if (selectedLabelFilter !== null) {
+        // Show only tasks that have the selected label
+        // Check both label.id and label.name since some labels might not have IDs
+        const hasSelectedLabel = task.labels.some(label => {
+          // First try to match by ID
+          if (label.id === selectedLabelFilter) return true;
+          // If no ID match, try to match by name (for labels without IDs)
+          if (!label.id && selectedLabelFilter.includes(label.name)) return true;
+          return false;
+        });
+        if (!hasSelectedLabel) return false;
+      }
+      
+      // Filter by priority
+      if (selectedPriorityFilter !== null) {
+        // Show only tasks with the selected priority
+        if (task.priority !== selectedPriorityFilter) return false;
+      }
+      
+      return true;
     });
 
     const { isOver, setNodeRef } = useDroppable({
@@ -1032,6 +1085,55 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
     );
   };
 
+  // Get unique values for filter options
+  const uniqueUsers = React.useMemo(() => {
+    const usersSet = new Set();
+    const users: { id: string; username: string; avatar?: string }[] = [];
+    
+    tasks.forEach(task => {
+      if (task.assignee && !usersSet.has(task.assignee.id)) {
+        usersSet.add(task.assignee.id);
+        users.push({
+          id: task.assignee.id,
+          username: task.assignee.username,
+          avatar: task.assignee.avatar
+        });
+      }
+    });
+    
+    return users.sort((a, b) => a.username.localeCompare(b.username));
+  }, [tasks]);
+
+  const uniqueLabels = React.useMemo(() => {
+    const labelsSet = new Set();
+    const labels: { id: string; name: string; color: string }[] = [];
+    
+    tasks.forEach(task => {
+      task.labels.forEach((label, index) => {
+        // Use label.id if available, otherwise use label.name as identifier
+        const labelId = label.id || `${task.id}-${label.name}-${index}`;
+        const labelKey = label.id || label.name; // Use name as unique key if no id
+        
+        if (!labelsSet.has(labelKey) && label.name && label.color) {
+          labelsSet.add(labelKey);
+          labels.push({
+            id: labelId,
+            name: label.name,
+            color: label.color
+          });
+        }
+      });
+    });
+    
+    return labels.sort((a, b) => a.name.localeCompare(b.name));
+  }, [tasks]);
+
+  const priorityOptions = [
+    { label: 'High Priority', value: 'high', color: '#EF4444' },
+    { label: 'Medium Priority', value: 'medium', color: '#F59E0B' },
+    { label: 'Low Priority', value: 'low', color: '#10B981' }
+  ];
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1044,110 +1146,71 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
   }
 
   return (
-    <div className="h-full">
+    <div className="h-full relative">
       {/* Real-time Status Bar */}
       <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-3">
         <div className="flex items-center gap-4">
-          {/* Collection Filter */}
-          {collections.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Filter:</span>
-              <Dropdown
-                value={selectedCollectionFilter === null ? 'all' : selectedCollectionFilter} // Convert null to 'all' for display
-                options={[
-                  { label: 'All Tasks', value: 'all' }, // Changed from null to 'all'
-                  { label: 'No Collection', value: 'none' },
-                  ...collections.map(collection => ({
-                    label: collection.name,
-                    value: collection.id,
-                    color: collection.color
-                  }))
-                ]}
-                onChange={(e) => setSelectedCollectionFilter(e.value === 'all' ? null : e.value)} // Convert 'all' back to null
-                placeholder="Filter by collection"
-                className="w-48"
-                itemTemplate={(option) => (
-                  <div className="flex items-center gap-2">
-                    {option.color && (
-                      <div 
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: option.color }}
-                      />
-                    )}
-                    {option.value === 'none' && (
-                      <i className="pi pi-ban text-gray-400 text-xs"></i>
-                    )}
-                    {option.value === 'all' && (
-                      <i className="pi pi-list text-gray-400 text-xs"></i>
-                    )}
-                    <span>{option.label}</span>
-                  </div>
-                )}
-                valueTemplate={(option) => {
-                  if (!option || option.value === 'all') {
-                    return (
-                      <div className="flex items-center gap-2">
-                        <i className="pi pi-list text-gray-400 text-xs"></i>
-                        <span className="text-sm">All Tasks</span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="flex items-center gap-2">
-                      {option.color && (
-                        <div 
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: option.color }}
-                        />
-                      )}
-                      {option.value === 'none' && (
-                        <i className="pi pi-ban text-gray-400 text-xs"></i>
-                      )}
-                      <span className="text-sm">{option.label}</span>
-                    </div>
-                  );
-                }}
-              />
-              {/* Clear Filter Button */}
-              {selectedCollectionFilter !== null && (
-                <Button
-                  icon="pi pi-times"
-                  className="p-button-text p-button-sm"
-                  tooltip="Clear filter"
-                  onClick={() => setSelectedCollectionFilter(null)}
-                />
-              )}
-            </div>
-          )}
+          {/* Filter Button */}
+          <Button
+            id="filter-button"
+            icon="pi pi-filter"
+            label="Filters"
+            size="small"
+            outlined={!showFilterSidebar}
+            severity={showFilterSidebar ? 'info' : undefined}
+            className="text-sm"
+            onClick={() => setShowFilterSidebar(!showFilterSidebar)}
+          />
           
-          {/* Filter Status */}
-          {selectedCollectionFilter && (
+          {/* Active Filter Indicators */}
+          {(selectedCollectionFilter || selectedUserFilter || selectedLabelFilter || selectedPriorityFilter) && (
             <div className="flex items-center gap-2">
-              {selectedCollectionFilter === 'none' ? (
-                <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full">
-                  <i className="pi pi-ban text-gray-500 text-xs"></i>
-                  <span className="text-xs text-gray-600">Showing: No Collection</span>
-                </div>
-              ) : (
-                (() => {
-                  const filterCollection = collections.find(c => c.id === selectedCollectionFilter);
-                  return filterCollection ? (
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-full" style={{ backgroundColor: filterCollection.color + '20' }}>
-                      <div 
-                        className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: filterCollection.color }}
-                      />
-                      <span className="text-xs" style={{ color: filterCollection.color }}>Showing: {filterCollection.name}</span>
-                    </div>
-                  ) : null;
-                })()
-              )}
               <span className="text-xs text-gray-500">
-                ({tasks.filter(t => {
-                  if (selectedCollectionFilter === 'none') return !t.collectionId;
-                  return t.collectionId === selectedCollectionFilter;
-                }).length} tasks)
+                Active filters: {tasks.filter(t => {
+                  // Apply all filters to count
+                  if (selectedCollectionFilter !== null) {
+                    if (selectedCollectionFilter === 'none') {
+                      if (t.collectionId) return false;
+                    } else {
+                      if (t.collectionId !== selectedCollectionFilter) return false;
+                    }
+                  }
+                  if (selectedUserFilter !== null) {
+                    if (selectedUserFilter === 'unassigned') {
+                      if (t.assignee) return false;
+                    } else {
+                      if (!t.assignee || t.assignee.id !== selectedUserFilter) return false;
+                    }
+                  }
+                  if (selectedLabelFilter !== null) {
+                    const hasSelectedLabel = t.labels.some(label => {
+                      if (label.id === selectedLabelFilter) return true;
+                      if (!label.id && selectedLabelFilter.includes(label.name)) return true;
+                      return false;
+                    });
+                    if (!hasSelectedLabel) return false;
+                  }
+                  if (selectedPriorityFilter !== null) {
+                    if (t.priority !== selectedPriorityFilter) return false;
+                  }
+                  return true;
+                }).length} of {tasks.length} tasks
               </span>
+              
+              {/* Clear All Filters */}
+              <Button
+                icon="pi pi-times"
+                size="small"
+                text
+                className="p-0 w-5 h-5"
+                onClick={() => {
+                  setSelectedCollectionFilter(null);
+                  setSelectedUserFilter(null);
+                  setSelectedLabelFilter(null);
+                  setSelectedPriorityFilter(null);
+                }}
+                tooltip="Clear all filters"
+              />
             </div>
           )}
           
@@ -1205,13 +1268,219 @@ export function KanbanView({ onTaskClick, currentProject }: KanbanViewProps) {
         </div>
       </div>
       
+      {/* Filter Sidebar */}
+      {showFilterSidebar && (
+        <div id="filter-sidebar" className="absolute top-16 right-0 w-80 h-full bg-white border-l border-gray-200 shadow-lg z-50 overflow-y-auto">
+          <div className="p-4">
+            {/* Sidebar Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                <i className="pi pi-filter text-blue-500"></i>
+                Filters
+              </h3>
+              <Button
+                icon="pi pi-times"
+                className="p-button-text p-button-sm"
+                onClick={() => setShowFilterSidebar(false)}
+              />
+            </div>
+            
+            {/* Collection Filter */}
+            {collections.length > 0 && (
+              <div className="mb-6">
+                <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                  <i className="pi pi-folder text-gray-500 text-sm"></i>
+                  Collections
+                </h4>
+                <div className="space-y-2">
+                  <div 
+                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                      selectedCollectionFilter === null ? 'bg-blue-50 border border-blue-200' : ''
+                    }`}
+                    onClick={() => setSelectedCollectionFilter(null)}
+                  >
+                    <i className="pi pi-list text-gray-400 text-xs"></i>
+                    <span className="text-sm">All Collections</span>
+                  </div>
+                  <div 
+                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                      selectedCollectionFilter === 'none' ? 'bg-blue-50 border border-blue-200' : ''
+                    }`}
+                    onClick={() => setSelectedCollectionFilter('none')}
+                  >
+                    <i className="pi pi-ban text-gray-400 text-xs"></i>
+                    <span className="text-sm">No Collection</span>
+                  </div>
+                  {collections.map(collection => (
+                    <div 
+                      key={collection.id}
+                      className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                        selectedCollectionFilter === collection.id ? 'bg-blue-50 border border-blue-200' : ''
+                      }`}
+                      onClick={() => setSelectedCollectionFilter(collection.id)}
+                    >
+                      <div 
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: collection.color }}
+                      />
+                      <span className="text-sm">{collection.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* User Filter */}
+            {uniqueUsers.length > 0 && (
+              <div className="mb-6">
+                <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                  <i className="pi pi-user text-gray-500 text-sm"></i>
+                  Assignees
+                </h4>
+                <div className="space-y-2">
+                  <div 
+                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                      selectedUserFilter === null ? 'bg-blue-50 border border-blue-200' : ''
+                    }`}
+                    onClick={() => setSelectedUserFilter(null)}
+                  >
+                    <i className="pi pi-users text-gray-400 text-xs"></i>
+                    <span className="text-sm">All Users</span>
+                  </div>
+                  <div 
+                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                      selectedUserFilter === 'unassigned' ? 'bg-blue-50 border border-blue-200' : ''
+                    }`}
+                    onClick={() => setSelectedUserFilter('unassigned')}
+                  >
+                    <i className="pi pi-user-minus text-gray-400 text-xs"></i>
+                    <span className="text-sm">Unassigned</span>
+                  </div>
+                  {uniqueUsers.map(user => (
+                    <div 
+                      key={user.id}
+                      className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                        selectedUserFilter === user.id ? 'bg-blue-50 border border-blue-200' : ''
+                      }`}
+                      onClick={() => setSelectedUserFilter(user.id)}
+                    >
+                      {user.avatar ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img 
+                          src={user.avatar} 
+                          alt={user.username}
+                          className="w-4 h-4 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center">
+                          <span className="text-xs text-white">{user.username[0].toUpperCase()}</span>
+                        </div>
+                      )}
+                      <span className="text-sm">{user.username}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Label Filter */}
+            <div className="mb-6">
+              <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                <i className="pi pi-tags text-gray-500 text-sm"></i>
+                Labels
+              </h4>
+              <div className="space-y-2">
+                <div 
+                  className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                    selectedLabelFilter === null ? 'bg-blue-50 border border-blue-200' : ''
+                  }`}
+                  onClick={() => setSelectedLabelFilter(null)}
+                >
+                  <i className="pi pi-tags text-gray-400 text-xs"></i>
+                  <span className="text-sm">All Labels</span>
+                </div>
+                {uniqueLabels.map(label => (
+                  <div 
+                    key={label.id}
+                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                      selectedLabelFilter === label.id ? 'bg-blue-50 border border-blue-200' : ''
+                    }`}
+                    onClick={() => setSelectedLabelFilter(label.id)}
+                  >
+                    <div 
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: label.color }}
+                    />
+                    <span className="text-sm">{label.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Priority Filter */}
+            <div className="mb-6">
+              <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                <i className="pi pi-flag text-gray-500 text-sm"></i>
+                Priority
+              </h4>
+              <div className="space-y-2">
+                <div 
+                  className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                    selectedPriorityFilter === null ? 'bg-blue-50 border border-blue-200' : ''
+                  }`}
+                  onClick={() => setSelectedPriorityFilter(null)}
+                >
+                  <i className="pi pi-flag text-gray-400 text-xs"></i>
+                  <span className="text-sm">All Priorities</span>
+                </div>
+                {priorityOptions.map(priority => (
+                  <div 
+                    key={priority.value}
+                    className={`p-2 rounded cursor-pointer hover:bg-gray-50 flex items-center gap-2 ${
+                      selectedPriorityFilter === priority.value ? 'bg-blue-50 border border-blue-200' : ''
+                    }`}
+                    onClick={() => setSelectedPriorityFilter(priority.value)}
+                  >
+                    <div 
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: priority.color }}
+                    />
+                    <span className="text-sm">{priority.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Clear All Filters */}
+            {(selectedCollectionFilter !== null || selectedUserFilter !== null || selectedLabelFilter !== null || selectedPriorityFilter !== null) && (
+              <div className="pt-4 border-t border-gray-200">
+                <Button
+                  icon="pi pi-filter-slash"
+                  label="Clear All Filters"
+                  className="w-full"
+                  outlined
+                  onClick={() => {
+                    setSelectedCollectionFilter(null);
+                    setSelectedUserFilter(null);
+                    setSelectedLabelFilter(null);
+                    setSelectedPriorityFilter(null);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-6 overflow-x-auto p-6 min-h-screen pb-20">
+        <div className={`flex gap-6 overflow-x-auto p-6 min-h-screen pb-20 transition-all duration-300 ${
+          showFilterSidebar ? 'pr-86' : ''
+        }`}>
           {columns.map(column => (
             <KanbanColumn key={column.id} column={column} />
           ))}
