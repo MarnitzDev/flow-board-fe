@@ -29,3 +29,85 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* React Big Calendar Customizations */
+.rbc-calendar {
+  font-family: Arial, Helvetica, sans-serif;
+  background-color: white;
+}
+
+.rbc-header {
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.rbc-today {
+  background-color: #f0f9ff;
+}
+
+.rbc-event {
+  border-radius: 4px;
+  border: none;
+  font-size: 12px;
+  padding: 2px 5px;
+}
+
+.rbc-event-content {
+  font-weight: 500;
+}
+
+.rbc-month-view {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rbc-date-cell {
+  padding: 4px 8px;
+}
+
+.rbc-day-bg {
+  border-right: 1px solid #e2e8f0;
+}
+
+.rbc-month-row {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.rbc-off-range-bg {
+  background-color: #f9fafb;
+}
+
+.rbc-toolbar {
+  margin-bottom: 16px;
+  display: none; /* We'll use our custom toolbar */
+}
+
+.rbc-agenda-view {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.rbc-agenda-table {
+  width: 100%;
+}
+
+.rbc-agenda-date-cell,
+.rbc-agenda-time-cell {
+  padding: 8px;
+  border-right: 1px solid #e2e8f0;
+  font-weight: 600;
+  background-color: #f8fafc;
+}
+
+.rbc-agenda-event-cell {
+  padding: 8px;
+}
+
+.rbc-time-view {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
