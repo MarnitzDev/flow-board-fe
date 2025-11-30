@@ -1,7 +1,8 @@
+import { KanbanBoard } from '@/components/kanban/kanban-board';
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Task, Collection, Project, TaskFilter, CreateCollectionForm } from '@/types/task';
+import { Task, Collection, Project, TaskFilter, CreateCollectionForm, TaskSort } from '@/types/task';
 import { collectionsApi, tasksApi } from '@/lib/api';
 import { useAuth } from '@/context/auth-context';
 import { useSocket } from '@/context/socket-context';
@@ -155,6 +156,9 @@ export function CollectionKanbanView({ filters, onTaskClick, currentProject }: C
       uncategorizedTasks: uncategorized
     };
   }, [tasks]);
+
+  // Add a default sorting for KanbanBoard
+  const defaultSorting = useMemo<TaskSort>(() => ({ field: 'order', direction: 'asc' }), []);
 
   // Collection operations
   const handleCreateCollection = () => {
@@ -313,11 +317,10 @@ export function CollectionKanbanView({ filters, onTaskClick, currentProject }: C
               onTaskClick={onTaskClick}
             >
               <KanbanBoard
-                tasks={collectionTasks[collection.id] || []}
                 onTaskClick={onTaskClick}
                 currentProject={currentProject}
-                collectionId={collection.id}
                 filters={filters}
+                sorting={defaultSorting}
               />
             </CollectionCard>
           ))}
@@ -326,10 +329,10 @@ export function CollectionKanbanView({ filters, onTaskClick, currentProject }: C
         {uncategorizedTasks.length > 0 && (
           <UncategorizedSection tasks={uncategorizedTasks}>
             <KanbanBoard
-              tasks={uncategorizedTasks}
               onTaskClick={onTaskClick}
               currentProject={currentProject}
               filters={filters}
+              sorting={defaultSorting}
             />
           </UncategorizedSection>
         )}
