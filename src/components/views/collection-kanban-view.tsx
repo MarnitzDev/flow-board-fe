@@ -53,7 +53,7 @@ export function CollectionKanbanView({ filters, onTaskClick, currentProject }: C
       }
 
       if (tasksResponse.success && tasksResponse.data) {
-        setTasks(tasksResponse.data);
+        setTasks(Array.isArray(tasksResponse.data) ? tasksResponse.data : []);
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
