@@ -185,7 +185,7 @@ export function CollectionKanbanView({ filters, onTaskClick, currentProject }: C
           projectId: currentProject!.id
         });
         if (response.success && response.data) {
-          setCollections(prev => [...prev, response.data]);
+          setCollections(prev => [...prev, response.data as Collection]);
           
           // Emit socket event
           if (socketContext?.isConnected) {
