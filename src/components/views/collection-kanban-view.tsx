@@ -49,7 +49,7 @@ export function CollectionKanbanView({ filters, onTaskClick, currentProject }: C
       ]);
 
       if (collectionsResponse.success && collectionsResponse.data) {
-        setCollections(collectionsResponse.data);
+        setCollections(Array.isArray(collectionsResponse.data) ? collectionsResponse.data : []);
       }
 
       if (tasksResponse.success && tasksResponse.data) {
