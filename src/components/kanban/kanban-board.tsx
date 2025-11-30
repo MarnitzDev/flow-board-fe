@@ -763,7 +763,7 @@ export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
         style={style} 
         {...attributes} 
         {...listeners}
-        className={`transition-all duration-200 ${isDragging ? 'scale-105 shadow-2xl rotate-2' : 'hover:shadow-md'}`}
+        className={`transition-all duration-200 ${isDragging ? 'scale-105 shadow-2xl' : 'hover:shadow-md'}`}
       >
         <TaskCard task={task} />
       </div>
@@ -925,7 +925,7 @@ export function KanbanBoard({ onTaskClick, currentProject }: KanbanBoardProps) {
         
         <DragOverlay>
           {activeTask ? (
-            <div className="transform rotate-3 scale-105 shadow-2xl">
+            <div className="transform scale-105 shadow-2xl">
               <TaskCard task={activeTask} />
             </div>
           ) : null}

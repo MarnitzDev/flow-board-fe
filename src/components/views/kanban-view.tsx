@@ -1341,7 +1341,7 @@ export function KanbanView({ currentProject }: KanbanViewProps) {
         style={style} 
         {...attributes} 
         {...listeners}
-        className={`transition-all duration-200 ${isItemDragging ? 'scale-105 shadow-2xl rotate-2' : 'hover:shadow-md'}`}
+        className={`transition-all duration-200 ${isItemDragging ? 'scale-105 shadow-2xl' : 'hover:shadow-md'}`}
       >
         <TaskCard task={task} />
       </div>
@@ -1404,7 +1404,7 @@ export function KanbanView({ currentProject }: KanbanViewProps) {
     });
 
     return (
-      <div className={`flex-1 min-w-80 bg-gray-50 rounded-lg p-4 transition-all duration-300 flex flex-col h-full border border-gray-200 ${
+      <div className={`flex-1 min-w-80 bg-gray-50 rounded-lg transition-all duration-300 flex flex-col h-full ${
         isDragging ? 'shadow-lg ring-2 ring-gray-200' : ''
       } ${isOver ? 'ring-2 ring-blue-400 shadow-xl border-blue-300' : ''}`}>
         {/* Column header */}
@@ -1425,7 +1425,7 @@ export function KanbanView({ currentProject }: KanbanViewProps) {
         {/* Droppable Tasks Area */}
         <div 
           ref={setNodeRef}
-          className={`space-y-3 rounded-lg p-3 transition-all duration-300 flex-1 overflow-y-auto ${
+          className={`space-y-3 rounded-lg transition-all duration-300 flex-1 overflow-y-auto ${
             isOver 
               ? 'bg-blue-50 border-2 border-blue-400 border-dashed shadow-inner scale-102' 
               : 'bg-transparent border-2 border-transparent'
@@ -1868,7 +1868,7 @@ export function KanbanView({ currentProject }: KanbanViewProps) {
         
         <DragOverlay>
           {activeTask ? (
-            <div className="transform rotate-3 scale-105 shadow-2xl">
+            <div className="transform">
               <TaskCard task={activeTask} />
             </div>
           ) : null}
